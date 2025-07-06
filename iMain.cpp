@@ -37,7 +37,7 @@ bool hasgamebeenwon = false;
 
 bool showendgamescreen = false;
 int endgametimercounter = 0;
-const int end_screen_timer_ticks = 500; // Changed from 60 to 240 for ~4 seconds
+const int end_screen_timer_ticks = 500; 
 
 
 const int regular_enemy_base_health_hits = 2;
@@ -145,7 +145,7 @@ bool checkCollision(double x1, double y1, double w1, double h1, double x2, doubl
 
 void fireenemybullets()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+    if (!isgamerunning || isgameover || isgamepaused) return; 
 
     for (int i = 0; i < currentactiveenemycount; ++i) {
         if (activeenemies[i].isactive && activeenemies[i].positionx < screenwidth && activeenemies[i].positionx > 0 && currentenemybulletcount < 200) {
@@ -160,7 +160,7 @@ void fireenemybullets()
 
 void moveenemybullets()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+    if (!isgamerunning || isgameover || isgamepaused) return; 
 
     int validbulletindex = 0;
     for (int i = 0; i < currentenemybulletcount; i++)
@@ -176,7 +176,7 @@ void moveenemybullets()
 
 void moveplayermissiles()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+    if (!isgamerunning || isgameover || isgamepaused) return; 
 
     int validbulletindex = 0;
     for (int i = 0; i < currentplayerbulletcount; i++)
@@ -192,7 +192,7 @@ void moveplayermissiles()
 
 void playerfiresbullet()
 {
-    if (isgamerunning && currentplayerbulletcount < 50 && !isgameover && !isgamepaused) // Removed showendgamescreen check here
+    if (isgamerunning && currentplayerbulletcount < 50 && !isgameover && !isgamepaused) 
     {
         playerbullets[currentplayerbulletcount].positionx = playerx + 90;
         playerbullets[currentplayerbulletcount].positiony = playery + 33;
@@ -203,7 +203,7 @@ void playerfiresbullet()
 void spawnnewenemies()
 {
     if (totaleniemiesspawned >= total_enemies_required_to_win) return;
-    if (showendgamescreen || isgamepaused || isgameover) return; // Added isgameover check here
+    if (showendgamescreen || isgamepaused || isgameover) return; 
 
     if (totaleniemiesspawned < 10) {
         maxsimultaneousenemies = 2;
@@ -317,7 +317,7 @@ void spawnnewenemies()
 
 void moveenemies()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+    if (!isgamerunning || isgameover || isgamepaused) return; 
 
     for (int i = 0; i < currentactiveenemycount; ++i)
     {
@@ -375,7 +375,7 @@ void resetallgamestates() {
 
 void rungamelogicanddisplay()
 {
-    if (isgamepaused || isgameover) return; // If game is over, we don't run game logic
+    if (isgamepaused || isgameover) return; 
 
     gametickcount++;
 
@@ -465,8 +465,8 @@ void rungamelogicanddisplay()
         playerhealth = 0;
         isgameover = true;
         hasgamebeenwon = false;
-        showendgamescreen = true; // Show end screen instantly
-        iPauseTimer(0); // Pause all game timers
+        showendgamescreen = true; 
+        iPauseTimer(0); 
         return; 
     }
 
@@ -490,7 +490,7 @@ void rungamelogicanddisplay()
                 {
                     playerbullets[j].positionx = screenwidth + 100;
 
-                    // Player bullet damage increased from 1 to 2
+                
                     activeenemies[i].currenthealth -= 2; 
 
                     if (activeenemies[i].currenthealth <= 0)
@@ -530,8 +530,8 @@ void rungamelogicanddisplay()
     } else if (currentactiveenemycount == 0 && totalenemieskilled >= total_enemies_required_to_win && !isgameover) {
         isgameover = true;
         hasgamebeenwon = true;
-        showendgamescreen = true; // Show end screen instantly
-        iPauseTimer(0); // Pause all game timers
+        showendgamescreen = true; 
+        iPauseTimer(0); 
         return; 
     }
 
@@ -642,9 +642,9 @@ void iDraw()
     }
     else if (isgamerunning == true)
     {
-        // If the game is over and we're showing the end screen
+        
         if (isgameover && showendgamescreen) {
-            iClear(); // Clear the screen to show only the end message
+            iClear(); 
             if (hasgamebeenwon)
             {
                 iSetColor(0, 255, 0);
@@ -657,8 +657,7 @@ void iDraw()
             }
 
             endgametimercounter++;
-            // This assumes iDraw is called at regular intervals (e.g., 50ms by default in iGraphics).
-            // So 60 ticks will be 60 * 50ms = 3000ms = 3 seconds.
+
             if (endgametimercounter >= end_screen_timer_ticks) {
                 isgamerunning = false;
                 ishomepageactive = true;
@@ -666,7 +665,7 @@ void iDraw()
                 managemusicplayback();
             }
         }
-        // If the game is running normally or paused
+
         else {
             rungamelogicanddisplay(); 
             if (isgamepaused) {
@@ -750,13 +749,13 @@ void iKeyboard(unsigned char key)
 {
     if (key == 'p' || key == 'P')
     {
-        if (isgamerunning && !isgameover && !showendgamescreen) { // Ensure not already in end screen
+        if (isgamerunning && !isgameover && !showendgamescreen) { 
             isgamepaused = true;
         }
     }
     else if (key == 'r' || key == 'R')
     {
-        if (isgamerunning && !isgameover && !showendgamescreen) { // Ensure not already in end screen
+        if (isgamerunning && !isgameover && !showendgamescreen) {
             isgamepaused = false;
         }
     }
@@ -776,7 +775,7 @@ void iKeyboard(unsigned char key)
             iscreditpageactive = false;
             ishomepageactive = true;
         }
-        else if (isgamerunning == true && !isgameover) // Only allow 'b' to return to menu if game is running and not over
+        else if (isgamerunning == true && !isgameover)
         {
             isgamerunning = false;
             ishomepageactive = true;
@@ -786,7 +785,7 @@ void iKeyboard(unsigned char key)
     }
     else if (key == ' ')
     {
-        if (!issuperpOweractive && isgamerunning && !isgameover && !isgamepaused) { // Ensure game is running, not over, not paused
+        if (!issuperpOweractive && isgamerunning && !isgameover && !isgamepaused) { 
             playerfiresbullet();
         }
     }
@@ -795,7 +794,7 @@ void iKeyboard(unsigned char key)
 void iSpecialKeyboard(unsigned char key)
 {
     if (isgamerunning && !isgameover && !isgamepaused) {
-        if (key == GLUT_KEY_RIGHT && playerx <= (screenwidth / 2) - 100) // Changed boundary
+        if (key == GLUT_KEY_RIGHT && playerx <= (screenwidth / 2) - 100) 
         {
             playerx += 15;
         }
@@ -851,8 +850,6 @@ int main(int argc, char *argv[])
     iSetTimer(50, moveenemies);
     iSetTimer(2000, spawnnewenemies);
     
-    // As iDraw is the main drawing function called by GLUT, and it now manages
-    // when to call rungamelogicanddisplay, there's no separate timer needed for rungamelogicanddisplay.
 
     srand(time(0));
 
