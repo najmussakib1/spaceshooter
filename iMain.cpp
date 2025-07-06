@@ -1,86 +1,141 @@
 #include "iGraphics.h"
 #include <math.h>
-#include <iostream>
 #include "iSound.h"
 #include <time.h>
-#include <vector>
-#include <chrono>
+#include <cstdlib>
+#include <algorithm>
 
-bool homepage = true, startPage = false, creditPage = false, instructionPage = false;
-double screen_height = 750, screen_width = 1850;
-double px = 10, py = screen_height / 2;
+bool ishomepageactive = true;
+bool isgamerunning = false;
+bool iscreditpageactive = false;
+bool isinstructionpageactive = false;
 
-double misile_speed = 50;
-int my_health = 200;
+bool isgamepaused = false;
 
-int score = 0;
-char score_string[20], my_health_string[20];
-int difficulty = 0;
+double screenheight = 750;
+double screenwidth = 1850;
+double playerx = 10;
+double playery = screenheight / 2;
 
-const int TOTAL_ENEMIES_TO_DEFEAT = 30;
-int enemies_killed_total = 0;
-int current_wave_enemies_spawned = 0;
+double playermissilespeed = 50;
+int playerhealth = 200;
 
-bool game_over = false;
-bool game_won = false;
+const int max_player_health = 400;
 
-bool show_end_screen = false;
-std::chrono::steady_clock::time_point end_screen_start_time;
-const long long END_SCREEN_DURATION_MS = 3000;
+int gamescore = 0;
+char scoredisplaystring[20];
 
-const int BASE_REGULAR_ENEMY_HEALTH_HITS = 2;
-const int BASE_BOSS_ENEMY_HEALTH_HITS = 5;
-const int HEALTH_INCREASE_HITS_PER_5_ENEMIES = 1;
-const int BOSS_HEALTH_INCREASE_HITS_PER_10_ENEMIES = 1;
+const int total_enemies_required_to_win = 50;
+const int total_bosses_in_game = 25;
+int totalenemieskilled = 0;
+int totaleniemiesspawned = 0;
+int totalbossesspawned = 0;
 
+bool isgameover = false;
+bool hasgamebeenwon = false;
+
+
+bool showendgamescreen = false;
+int endgametimercounter = 0;
+const int end_screen_timer_ticks = 500; // Changed from 60 to 240 for ~4 seconds
+
+
+const int regular_enemy_base_health_hits = 2;
+const int boss_enemy_base_health_hits = 5;
+const int regular_enemy_health_increase_per_5_kills = 1;
+const int boss_health_increase_per_10_kills = 1;
+
+#define MAX_ENEMIES 100
 struct Enemy {
-    double x, y;
+    double positionx, positiony;
+    double movementspeed;
+    int currenthealth;
+    bool isbossenemy;
+    bool isactive;
+    double targethorizontalposition;
+};
+
+Enemy activeenemies[MAX_ENEMIES];
+int currentactiveenemycount = 0;
+
+int maxsimultaneousenemies = 2;
+
+int regularenemieskilledsincelastbosswave = 0;
+const int regular_enemies_before_boss_wave = 5;
+const int initial_regular_enemies_for_first_boss = 5;
+bool isinbosswave = false;
+int currentbossenemiesinwave = 0;
+
+struct FoodItem {
+    double positionx;
+    double positiony;
+    bool isactive;
+    bool issuperpOwer;
+};
+
+#define MAX_FOOD_ITEMS_ON_SCREEN 5
+FoodItem fooditemsonScreen[MAX_FOOD_ITEMS_ON_SCREEN];
+int currentfooditemcount = 0;
+int enemieskilledsincelastfooddrop = 0;
+const int enemies_killed_for_food_drop = 20;
+
+bool issuperpOweractive = false;
+int superpowerrstarttime = 0; 
+const int superpower_duration_ticks = 100;
+const int enemies_for_superpower_drop = 25;
+int enemieskilledsincelastsuperpower = 0;
+
+int superpowerbullettimer = 0;
+const int superpower_bullet_interval = 2;
+
+int gametickcount = 0;
+
+struct Bullet {
+    double positionx, positiony;
+};
+
+struct EnemyBullet {
+    double positionx, positiony;
     double speed;
-    int health;
-    bool isBoss;
-    bool active;
-    double target_x_pos;
-
-    Enemy(double start_x, double start_y, double spd, int hp, bool bossType)
-        : x(start_x), y(start_y), speed(spd), health(hp), isBoss(bossType), active(true) {
-        target_x_pos = isBoss ? screen_width - 550 : screen_width - 450;
-    }
+    bool firedbyboss;
 };
 
-std::vector<Enemy> activeEnemies;
-int max_simultaneous_enemies = 2;
+Bullet playerbullets[50];
+int currentplayerbulletcount = 0;
+EnemyBullet enemybullets[200];
+int currentenemybulletcount = 0;
 
-int regular_enemies_killed_since_last_boss_wave = 0;
-const int REGULAR_ENEMIES_BEFORE_BOSS_WAVE = 5;
-const int INITIAL_REGULAR_ENEMIES_FOR_FIRST_BOSS = 4;
-bool in_boss_wave = false;
-int boss_enemies_in_current_wave = 0;
+double playerbulletmovementspeed = 50;
+double regularenemybulletmovementspeed = 30;
+double bossenemybulletmovementspeed = 70;
 
-struct Bullet
-{
-    double x, y;
-};
+Image playershipimage, playerbulletimage, backgroundimage, instructionpageimage, creditspageimage, regularenemyshipimage, finalbossshipimage, fooditemimage, enemybulletimage, superpowerfoodimage;
+int homescreenmusic, gameplaymusic;
 
-struct EnemyBullet
-{
-    double x, y;
-    double speed;
-    bool isBossBullet;
-};
+int explosionsoundeffect;
 
-Bullet bullets[50];
-int bulletCount = 0;
-EnemyBullet enemyBullets[100];
-int enemyBulletCount = 0;
+const double player_hitbox_offset_x = 15;
+const double player_hitbox_offset_y = 15;
+const double player_hitbox_width = 90 - (2 * player_hitbox_offset_x); 
+const double player_hitbox_height = 90 - (2 * player_hitbox_offset_y);
 
-double playerBulletSpeed = 50;
-double regularEnemyBulletSpeed = 20;
-double bossEnemyBulletSpeed = 60;
+const double regular_enemy_hitbox_offset_x = 20;
+const double regular_enemy_hitbox_offset_y = 20;
+const double regular_enemy_hitbox_width = 100 - (2 * regular_enemy_hitbox_offset_x);
+const double regular_enemy_hitbox_height = 100 - (2 * regular_enemy_hitbox_offset_y);
 
-Image planeImg, bulletImg, backgroundImg, instructionImg, creditsImg, enemy_shipsImg, finalBoss_shipImg;
-int HomeMusic, PlayMusic;
+const double boss_enemy_hitbox_offset_x = 25;
+const double boss_enemy_hitbox_offset_y = 25;
+const double boss_enemy_hitbox_width = 120 - (2 * boss_enemy_hitbox_offset_x);
+const double boss_enemy_hitbox_height = 120 - (2 * boss_enemy_hitbox_offset_y);
 
-bool isColliding(double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2)
+const double bullet_width = 20;
+const double bullet_height = 20;
+
+const double food_width = 50;
+const double food_height = 50;
+
+bool checkCollision(double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2)
 {
     return !(x2 > x1 + w1 ||
              x2 + w2 < x1 ||
@@ -88,553 +143,719 @@ bool isColliding(double x1, double y1, double w1, double h1, double x2, double y
              y2 + h2 < y1);
 }
 
-void enemyShoot()
+void fireenemybullets()
 {
-    if (!startPage || game_over || show_end_screen) return;
+    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
 
-    for (size_t i = 0; i < activeEnemies.size(); ++i) {
-        if (activeEnemies[i].active && activeEnemies[i].x < screen_width && activeEnemies[i].x > 0 && enemyBulletCount < 100) {
-            enemyBullets[enemyBulletCount].x = activeEnemies[i].x;
-            enemyBullets[enemyBulletCount].y = activeEnemies[i].y + (activeEnemies[i].isBoss ? 60 : 30);
-            enemyBullets[enemyBulletCount].speed = activeEnemies[i].isBoss ? bossEnemyBulletSpeed : regularEnemyBulletSpeed;
-            enemyBullets[enemyBulletCount].isBossBullet = activeEnemies[i].isBoss;
-            enemyBulletCount++;
+    for (int i = 0; i < currentactiveenemycount; ++i) {
+        if (activeenemies[i].isactive && activeenemies[i].positionx < screenwidth && activeenemies[i].positionx > 0 && currentenemybulletcount < 200) {
+            enemybullets[currentenemybulletcount].positionx = activeenemies[i].positionx;
+            enemybullets[currentenemybulletcount].positiony = activeenemies[i].positiony + (activeenemies[i].isbossenemy ? 60 : 30);
+            enemybullets[currentenemybulletcount].speed = activeenemies[i].isbossenemy ? bossenemybulletmovementspeed : regularenemybulletmovementspeed;
+            enemybullets[currentenemybulletcount].firedbyboss = activeenemies[i].isbossenemy;
+            currentenemybulletcount++;
         }
     }
 }
 
-void enemyBulletMovement()
+void moveenemybullets()
 {
-    if (!startPage || game_over || show_end_screen) return;
+    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
 
-    for (int i = 0; i < enemyBulletCount; i++)
+    int validbulletindex = 0;
+    for (int i = 0; i < currentenemybulletcount; i++)
     {
-        enemyBullets[i].x -= enemyBullets[i].speed;
-    }
-
-    int validIndex = 0;
-    for (int i = 0; i < enemyBulletCount; i++)
-    {
-        if (enemyBullets[i].x >= 0)
+        enemybullets[i].positionx -= enemybullets[i].speed;
+        if (enemybullets[i].positionx >= 0)
         {
-            enemyBullets[validIndex++] = enemyBullets[i];
+            enemybullets[validbulletindex++] = enemybullets[i];
         }
     }
-    enemyBulletCount = validIndex;
+    currentenemybulletcount = validbulletindex;
 }
 
-void missileMovement()
+void moveplayermissiles()
 {
-    if (!startPage || game_over || show_end_screen) return;
+    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
 
-    for (int i = 0; i < bulletCount; i++)
+    int validbulletindex = 0;
+    for (int i = 0; i < currentplayerbulletcount; i++)
     {
-        bullets[i].x += playerBulletSpeed;
-    }
-
-    int validIndex = 0;
-    for (int i = 0; i < bulletCount; i++)
-    {
-        if (bullets[i].x <= screen_width)
+        playerbullets[i].positionx += playermissilespeed;
+        if (playerbullets[i].positionx <= screenwidth)
         {
-            bullets[validIndex++] = bullets[i];
+            playerbullets[validbulletindex++] = playerbullets[i];
         }
     }
-    bulletCount = validIndex;
+    currentplayerbulletcount = validbulletindex;
 }
 
-void shootBullet()
+void playerfiresbullet()
 {
-    if (startPage && bulletCount < 50 && !game_over && !show_end_screen)
+    if (isgamerunning && currentplayerbulletcount < 50 && !isgameover && !isgamepaused) // Removed showendgamescreen check here
     {
-        bullets[bulletCount].x = px + 90;
-        bullets[bulletCount].y = py + 33;
-        bulletCount++;
+        playerbullets[currentplayerbulletcount].positionx = playerx + 90;
+        playerbullets[currentplayerbulletcount].positiony = playery + 33;
+        currentplayerbulletcount++;
     }
 }
 
-void spawnEnemies()
+void spawnnewenemies()
 {
-    if (enemies_killed_total >= TOTAL_ENEMIES_TO_DEFEAT)
-    {
-        game_over = true;
-        game_won = true;
-        return;
-    }
+    if (totaleniemiesspawned >= total_enemies_required_to_win) return;
+    if (showendgamescreen || isgamepaused || isgameover) return; // Added isgameover check here
 
-    if (show_end_screen) return;
-
-    activeEnemies.clear();
-
-    int regular_enemy_health_hits = BASE_REGULAR_ENEMY_HEALTH_HITS + (enemies_killed_total / 5) * HEALTH_INCREASE_HITS_PER_5_ENEMIES;
-    int boss_enemy_health_hits = BASE_BOSS_ENEMY_HEALTH_HITS + (enemies_killed_total / 10) * BOSS_HEALTH_INCREASE_HITS_PER_10_ENEMIES;
-
-    if (regular_enemies_killed_since_last_boss_wave >= REGULAR_ENEMIES_BEFORE_BOSS_WAVE &&
-        enemies_killed_total >= INITIAL_REGULAR_ENEMIES_FOR_FIRST_BOSS &&
-        !in_boss_wave)
-    {
-        in_boss_wave = true;
-        boss_enemies_in_current_wave = 0;
-        std::cout << "Starting Boss Wave!" << std::endl;
-    }
-
-    if (in_boss_wave) {
-        if (boss_enemies_in_current_wave < 2) {
-            for (int i = 0; i < 2; ++i) {
-                activeEnemies.emplace_back(
-                    screen_width + 10 + i * 150,
-                    rand() % (int)(screen_height - 150),
-                    10,
-                    boss_enemy_health_hits,
-                    true
-                );
-                boss_enemies_in_current_wave++;
-                current_wave_enemies_spawned++;
-            }
-        }
+    if (totaleniemiesspawned < 10) {
+        maxsimultaneousenemies = 2;
     } else {
-        for (int i = 0; i < max_simultaneous_enemies; ++i) {
-            bool isBossType = (rand() % 100 < 25) && (enemies_killed_total >= INITIAL_REGULAR_ENEMIES_FOR_FIRST_BOSS);
-            activeEnemies.emplace_back(
-                screen_width + 10 + i * 100,
-                rand() % (int)(screen_height - (isBossType ? 150 : 100)),
-                isBossType ? 10 : 6,
-                isBossType ? boss_enemy_health_hits : regular_enemy_health_hits,
-                isBossType
-            );
-            current_wave_enemies_spawned++;
-        }
-    }
-}
-
-void enemy_movement()
-{
-    if (!startPage || game_over || show_end_screen)
-        return;
-
-    for (size_t i = 0; i < activeEnemies.size(); ++i)
-    {
-        if (activeEnemies[i].active)
-        {
-            Enemy& enemy = activeEnemies[i];
-
-            if (enemy.x > enemy.target_x_pos)
-            {
-                enemy.x -= enemy.speed;
-            }
-            else
-            {
-                enemy.x = enemy.target_x_pos;
-
-                enemy.y += enemy.speed;
-
-                double enemy_height = enemy.isBoss ? 150 : 100;
-                if (enemy.y > screen_height - enemy_height || enemy.y < 0)
-                {
-                    enemy.speed = -enemy.speed;
-                }
-            }
-        }
-    }
-}
-
-void resetGameState() {
-    px = 10;
-    py = screen_height / 2;
-    my_health = 200;
-    score = 0;
-    enemies_killed_total = 0;
-    current_wave_enemies_spawned = 0;
-    game_over = false;
-    game_won = false;
-    bulletCount = 0;
-    enemyBulletCount = 0;
-    activeEnemies.clear();
-    regular_enemies_killed_since_last_boss_wave = 0;
-    in_boss_wave = false;
-    boss_enemies_in_current_wave = 0;
-    show_end_screen = false;
-    iResumeTimer(0);
-}
-
-void startGame()
-{
-    if (game_over && show_end_screen) {
-        return;
-    }
-    if (game_over && !show_end_screen) {
-        show_end_screen = true;
-        end_screen_start_time = std::chrono::steady_clock::now();
-        iPauseTimer(0);
-        return;
+        maxsimultaneousenemies = 3;
     }
 
-    iShowLoadedImage(0, 0, &backgroundImg);
-    iWrapImage(&backgroundImg, -10);
-    iShowLoadedImage(px, py, &planeImg);
-
-    for (size_t i = 0; i < activeEnemies.size(); ++i) {
-        if (activeEnemies[i].active) {
-            if (activeEnemies[i].isBoss)
-                iShowLoadedImage(activeEnemies[i].x, activeEnemies[i].y, &finalBoss_shipImg);
-            else
-                iShowLoadedImage(activeEnemies[i].x, activeEnemies[i].y, &enemy_shipsImg);
+    int activeenemycountnow = 0;
+    for(int i = 0; i < currentactiveenemycount; ++i) {
+        if(activeenemies[i].isactive) {
+            activeenemycountnow++;
         }
     }
 
-    for (int i = 0; i < bulletCount; i++)
-        iShowLoadedImage(bullets[i].x, bullets[i].y, &bulletImg);
+    int enemiestospawninthiscall = maxsimultaneousenemies - activeenemycountnow;
+    if (enemiestospawninthiscall <= 0) return;
 
-    for (int i = 0; i < enemyBulletCount; i++)
-        iShowLoadedImage(enemyBullets[i].x, enemyBullets[i].y, &bulletImg);
-
-    int validEnemyBulletIndex = 0;
-    for (int i = 0; i < enemyBulletCount; i++)
-    {
-        if (isColliding(enemyBullets[i].x, enemyBullets[i].y, 20, 20, px, py, 90, 90))
-        {
-            my_health -= (enemyBullets[i].isBossBullet ? 10 : 5);
-            enemyBullets[i].x = -100;
-        }
-        else if (enemyBullets[i].x >= 0)
-        {
-            enemyBullets[validEnemyBulletIndex++] = enemyBullets[i];
-        }
+    if (totaleniemiesspawned + enemiestospawninthiscall > total_enemies_required_to_win) {
+        enemiestospawninthiscall = total_enemies_required_to_win - totaleniemiesspawned;
     }
-    enemyBulletCount = validEnemyBulletIndex;
-
-    if (my_health <= 0)
-    {
-        my_health = 0;
-        game_over = true;
-        game_won = false;
-        return;
+    if (enemiestospawninthiscall <= 0) return;
+    
+    if (currentactiveenemycount + enemiestospawninthiscall > MAX_ENEMIES) {
+        enemiestospawninthiscall = MAX_ENEMIES - currentactiveenemycount;
+        if (enemiestospawninthiscall <= 0) return;
     }
 
-    int enemiesStillActiveInThisFrame = 0;
-    for (size_t i = 0; i < activeEnemies.size(); ++i)
-    {
-        if (activeEnemies[i].active)
-        {
-            double enemy_width = activeEnemies[i].isBoss ? 120 : 100;
-            double enemy_height = activeEnemies[i].isBoss ? 120 : 100;
+    for (int i = 0; i < enemiestospawninthiscall; ++i) {
+        bool shouldspawnboss = false;
 
-            for (int j = 0; j < bulletCount; j++)
-            {
-                if (isColliding(bullets[j].x, bullets[j].y, 20, 20, activeEnemies[i].x, activeEnemies[i].y, enemy_width, enemy_height))
-                {
-                    bullets[j].x = screen_width + 100;
-
-                    activeEnemies[i].health--;
-                    score += 5;
-
-                    if (activeEnemies[i].health <= 0)
-                    {
-                        activeEnemies[i].active = false;
-                        enemies_killed_total++;
-                        score += (activeEnemies[i].isBoss ? 500 : 100);
-
-                        if (activeEnemies[i].isBoss) {
-                            my_health += 10;
-                        } else {
-                            my_health += 5;
-                            regular_enemies_killed_since_last_boss_wave++;
-                        }
+        if (totaleniemiesspawned < initial_regular_enemies_for_first_boss) {
+            shouldspawnboss = false;
+        } else {
+            if (totalbossesspawned < total_bosses_in_game && totaleniemiesspawned < total_enemies_required_to_win) {
+                int remainingenemies = total_enemies_required_to_win - totaleniemiesspawned;
+                int remainingbosses = total_bosses_in_game - totalbossesspawned;
+                int remainingregular = remainingenemies - remainingbosses;
+                
+                if (remainingregular <= 0 && remainingbosses > 0) {shouldspawnboss = true;}
+                else if (remainingbosses <= 0) {shouldspawnboss = false;}
+                else {
+                    double bossprobability = (double)rand() / RAND_MAX;
+                    if (bossprobability < (double)remainingbosses / remainingenemies) {
+                        shouldspawnboss = true;
+                    } else {
+                        shouldspawnboss = false;
                     }
                 }
+            } else {
+                shouldspawnboss = false;
             }
-            if (activeEnemies[i].active) {
-                enemiesStillActiveInThisFrame++;
+        }
+        if (shouldspawnboss && totalbossesspawned >= total_bosses_in_game) {
+            shouldspawnboss = false;
+        }
+
+        int enemyhealth = shouldspawnboss ? (boss_enemy_base_health_hits + (totalenemieskilled / 10) * boss_health_increase_per_10_kills) :
+                                           (regular_enemy_base_health_hits + (totalenemieskilled / 5) * regular_enemy_health_increase_per_5_kills);
+        double enemyspeed = shouldspawnboss ? 10 : 6;
+        double enemyheight = shouldspawnboss ? 120 : 100;
+
+        double spawnyposition;
+        bool positionisclear = false;
+        int attempts = 0;
+        while (!positionisclear && attempts < 20) {
+            spawnyposition = rand() % (int)(screenheight - enemyheight - 50) + 50;
+            positionisclear = true;
+            for (int k = 0; k < currentactiveenemycount; ++k) {
+                if (activeenemies[k].isactive && std::abs(activeenemies[k].positiony - spawnyposition) < (enemyheight / 2 + 50)) {
+                    positionisclear = false;
+                    break;
+                }
             }
+            attempts++;
+        }
+
+        activeenemies[currentactiveenemycount].positionx = screenwidth + 10 + i * 100;
+        activeenemies[currentactiveenemycount].positiony = spawnyposition;
+        activeenemies[currentactiveenemycount].movementspeed = enemyspeed;
+        activeenemies[currentactiveenemycount].currenthealth = enemyhealth;
+        activeenemies[currentactiveenemycount].isbossenemy = shouldspawnboss;
+        activeenemies[currentactiveenemycount].isactive = true;
+        activeenemies[currentactiveenemycount].targethorizontalposition = shouldspawnboss ? screenwidth - 550 : screenwidth - 450;
+        
+        currentactiveenemycount++;
+
+        if (shouldspawnboss) {
+            totalbossesspawned++;
+        }
+        totaleniemiesspawned++;
+    }
+
+    if (enemieskilledsincelastfooddrop >= enemies_killed_for_food_drop && currentfooditemcount < MAX_FOOD_ITEMS_ON_SCREEN) {
+        fooditemsonScreen[currentfooditemcount].positionx = screenwidth + 50 + (rand() % 200);
+        fooditemsonScreen[currentfooditemcount].positiony = rand() % (int)(screenheight - 100);
+        fooditemsonScreen[currentfooditemcount].isactive = true;
+        fooditemsonScreen[currentfooditemcount].issuperpOwer = false;
+        currentfooditemcount++;
+        enemieskilledsincelastfooddrop = 0;
+    }
+
+    if (enemieskilledsincelastsuperpower >= enemies_for_superpower_drop && currentfooditemcount < MAX_FOOD_ITEMS_ON_SCREEN) {
+        fooditemsonScreen[currentfooditemcount].positionx = screenwidth + 50 + (rand() % 200);
+        fooditemsonScreen[currentfooditemcount].positiony = rand() % (int)(screenheight - 100);
+        fooditemsonScreen[currentfooditemcount].isactive = true;
+        fooditemsonScreen[currentfooditemcount].issuperpOwer = true;
+        currentfooditemcount++;
+        enemieskilledsincelastsuperpower = 0;
+    }
+}
+
+void moveenemies()
+{
+    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+
+    for (int i = 0; i < currentactiveenemycount; ++i)
+    {
+        if (activeenemies[i].isactive)
+        {
+            Enemy& enemy = activeenemies[i];
+
+            if (enemy.positionx > enemy.targethorizontalposition)
+            {
+                enemy.positionx -= enemy.movementspeed;
+            }
+            else
+            {
+                enemy.positionx = enemy.targethorizontalposition;
+                enemy.positiony += enemy.movementspeed;
+
+                double currentenemyheight = enemy.isbossenemy ? 120 : 100;
+                if (enemy.positiony > screenheight - currentenemyheight || enemy.positiony < 0)
+                {
+                    enemy.movementspeed = -enemy.movementspeed;
+                }
+            }
+        }
+    }
+}
+
+void resetallgamestates() {
+    playerx = 10;
+    playery = screenheight / 2;
+    playerhealth = 200;
+    gamescore = 0;
+    totalenemieskilled = 0;
+    totaleniemiesspawned = 0;
+    totalbossesspawned = 0;
+    isgameover = false;
+    hasgamebeenwon = false;
+    currentplayerbulletcount = 0;
+    currentenemybulletcount = 0;
+    currentactiveenemycount = 0;
+    regularenemieskilledsincelastbosswave = 0;
+    isinbosswave = false;
+    currentbossenemiesinwave = 0;
+    showendgamescreen = false;
+    endgametimercounter = 0;
+    currentfooditemcount = 0;
+    enemieskilledsincelastfooddrop = 0;
+    enemieskilledsincelastsuperpower = 0;
+    issuperpOweractive = false;
+    superpowerrstarttime = 0;
+    superpowerbullettimer = 0;
+    gametickcount = 0;
+    isgamepaused = false;
+    iResumeTimer(0); // Ensure timers are resumed when starting a new game
+}
+
+void rungamelogicanddisplay()
+{
+    if (isgamepaused || isgameover) return; // If game is over, we don't run game logic
+
+    gametickcount++;
+
+    if (issuperpOweractive && (gametickcount - superpowerrstarttime >= superpower_duration_ticks)) {
+        issuperpOweractive = false;
+        superpowerbullettimer = 0;
+    }
+
+    iShowLoadedImage(0, 0, &backgroundimage);
+    iWrapImage(&backgroundimage, -10);
+    iShowLoadedImage(playerx, playery, &playershipimage);
+
+    for (int i = 0; i < currentactiveenemycount; ++i) {
+        if (activeenemies[i].isactive) {
+            if (activeenemies[i].isbossenemy)
+                iShowLoadedImage(activeenemies[i].positionx, activeenemies[i].positiony, &finalbossshipimage);
+            else
+                iShowLoadedImage(activeenemies[i].positionx, activeenemies[i].positiony, &regularenemyshipimage);
         }
     }
 
-    std::vector<Enemy> nextActiveEnemies;
-    for(size_t i = 0; i < activeEnemies.size(); ++i) {
-        if(activeEnemies[i].active) {
-            nextActiveEnemies.push_back(activeEnemies[i]);
-        }
-    }
-    activeEnemies = nextActiveEnemies;
+    for (int i = 0; i < currentplayerbulletcount; i++)
+        iShowLoadedImage(playerbullets[i].positionx, playerbullets[i].positiony, &playerbulletimage);
 
-    if (activeEnemies.empty() && enemies_killed_total < TOTAL_ENEMIES_TO_DEFEAT) {
-        if (in_boss_wave) {
-            in_boss_wave = false;
-            regular_enemies_killed_since_last_boss_wave = 0;
+    for (int i = 0; i < currentenemybulletcount; i++)
+        iShowLoadedImage(enemybullets[i].positionx, enemybullets[i].positiony, &enemybulletimage);
+
+    int validfooditemindex = 0;
+    for (int i = 0; i < currentfooditemcount; ++i) {
+        if (fooditemsonScreen[i].isactive) {
+            fooditemsonScreen[i].positionx -= 10;
+            if (fooditemsonScreen[i].issuperpOwer) {
+                iShowLoadedImage(fooditemsonScreen[i].positionx, fooditemsonScreen[i].positiony, &superpowerfoodimage);
+            } else {
+                iShowLoadedImage(fooditemsonScreen[i].positionx, fooditemsonScreen[i].positiony, &fooditemimage);
+            }
+            
+            if (fooditemsonScreen[i].positionx >= -100) {
+                fooditemsonScreen[validfooditemindex++] = fooditemsonScreen[i];
+            } else {
+                fooditemsonScreen[i].isactive = false;
+            }
         }
-        spawnEnemies();
     }
-    else if (enemies_killed_total >= TOTAL_ENEMIES_TO_DEFEAT && activeEnemies.empty()) {
-        game_over = true;
-        game_won = true;
-        return;
+    currentfooditemcount = validfooditemindex;
+
+    validfooditemindex = 0;
+    for (int i = 0; i < currentfooditemcount; ++i) {
+        if (fooditemsonScreen[i].isactive) {
+            if (checkCollision(playerx, playery, 90, 90, fooditemsonScreen[i].positionx, fooditemsonScreen[i].positiony, food_width, food_height)) {
+                if (fooditemsonScreen[i].issuperpOwer) {
+                    issuperpOweractive = true;
+                    superpowerrstarttime = gametickcount;
+                    superpowerbullettimer = 0;
+                } else {
+                    playerhealth = std::min(playerhealth + 100, max_player_health);
+                }
+                fooditemsonScreen[i].isactive = false;
+            }
+            if (fooditemsonScreen[i].isactive) {
+                fooditemsonScreen[validfooditemindex++] = fooditemsonScreen[i];
+            }
+        }
+    }
+    currentfooditemcount = validfooditemindex;
+
+
+    int validenemybulletindex = 0;
+    for (int i = 0; i < currentenemybulletcount; i++)
+    {
+        if (!issuperpOweractive && checkCollision(enemybullets[i].positionx, enemybullets[i].positiony, bullet_width, bullet_height,
+                                                playerx + player_hitbox_offset_x, playery + player_hitbox_offset_y, player_hitbox_width, player_hitbox_height))
+        {
+            playerhealth -= (enemybullets[i].firedbyboss ? 4 : 2);
+            enemybullets[i].positionx = -100;
+        }
+        else if (enemybullets[i].positionx >= 0)
+        {
+            enemybullets[validenemybulletindex++] = enemybullets[i];
+        }
+    }
+    currentenemybulletcount = validenemybulletindex;
+
+    // Game Over condition
+    if (playerhealth <= 0 && !isgameover) 
+    {
+        playerhealth = 0;
+        isgameover = true;
+        hasgamebeenwon = false;
+        showendgamescreen = true; // Show end screen instantly
+        iPauseTimer(0); // Pause all game timers
+        return; 
+    }
+
+    int nextactiveenemywriteindex = 0;
+    for (int i = 0; i < currentactiveenemycount; ++i)
+    {
+        if (activeenemies[i].isactive)
+        {
+            double enemyhitboxoffsetx = activeenemies[i].isbossenemy ? boss_enemy_hitbox_offset_x : regular_enemy_hitbox_offset_x;
+            double enemyhitboxoffsety = activeenemies[i].isbossenemy ? boss_enemy_hitbox_offset_y : regular_enemy_hitbox_offset_y;
+            double enemyhitboxwidth = activeenemies[i].isbossenemy ? boss_enemy_hitbox_width : regular_enemy_hitbox_width;
+            double enemyhitboxheight = activeenemies[i].isbossenemy ? boss_enemy_hitbox_height : regular_enemy_hitbox_height;
+
+            int validplayerbulletindex = 0;
+            for (int j = 0; j < currentplayerbulletcount; j++)
+            {
+                if (playerbullets[j].positionx <= screenwidth &&
+                    checkCollision(playerbullets[j].positionx, playerbullets[j].positiony, bullet_width, bullet_height,
+                                   activeenemies[i].positionx + enemyhitboxoffsetx, activeenemies[i].positiony + enemyhitboxoffsety,
+                                   enemyhitboxwidth, enemyhitboxheight))
+                {
+                    playerbullets[j].positionx = screenwidth + 100;
+
+                    // Player bullet damage increased from 1 to 2
+                    activeenemies[i].currenthealth -= 2; 
+
+                    if (activeenemies[i].currenthealth <= 0)
+                    {
+                        activeenemies[i].isactive = false;
+                        totalenemieskilled++;
+                        iPlaySound("SelectedAssets/explode.wav", false, 100);
+
+                        if (activeenemies[i].isbossenemy) {
+                            gamescore += 100;
+                            playerhealth = std::min(playerhealth + 10, max_player_health);
+                        } else {
+                            gamescore += 50;
+                            playerhealth = std::min(playerhealth + 5, max_player_health);
+                        }
+                        enemieskilledsincelastfooddrop++;
+                        enemieskilledsincelastsuperpower++;
+                    }
+                }
+                 if (playerbullets[j].positionx <= screenwidth) {
+                    playerbullets[validplayerbulletindex++] = playerbullets[j];
+                }
+            }
+            currentplayerbulletcount = validplayerbulletindex;
+
+
+            if (activeenemies[i].isactive) {
+                activeenemies[nextactiveenemywriteindex++] = activeenemies[i];
+            }
+        }
+    }
+    currentactiveenemycount = nextactiveenemywriteindex;
+
+
+    if (totalenemieskilled < total_enemies_required_to_win) {
+        spawnnewenemies();
+    } else if (currentactiveenemycount == 0 && totalenemieskilled >= total_enemies_required_to_win && !isgameover) {
+        isgameover = true;
+        hasgamebeenwon = true;
+        showendgamescreen = true; // Show end screen instantly
+        iPauseTimer(0); // Pause all game timers
+        return; 
+    }
+
+    if (issuperpOweractive) {
+        superpowerbullettimer++;
+        if (superpowerbullettimer >= superpower_bullet_interval) {
+            playerfiresbullet();
+            superpowerbullettimer = 0;
+        }
     }
 
     iSetColor(240, 240, 240);
-    sprintf(my_health_string, "HEALTH: %d", my_health);
-    sprintf(score_string, "SCORE: %d", score);
-    iTextAdvanced(20, screen_height - 50, my_health_string, 0.15, 1);
-    iTextAdvanced(20, screen_height - 100, score_string, 0.15, 1);
+    iTextAdvanced(20, screenheight - 50, "HEALTH:", 0.15, 1);
+
+    double healthbarx = 130;
+    double healthbary = screenheight - 50 - 2;
+    double healthbarheight = 25;
+    double maxhealthbarwidth = 200;
+
+    double currentdisplayhealth = playerhealth;
+    if (currentdisplayhealth > max_player_health) {
+        currentdisplayhealth = max_player_health;
+    }
+
+    double currenthealthbarwidth = (currentdisplayhealth / (double)max_player_health) * maxhealthbarwidth;
+
+    iSetColor(50, 50, 50);
+    iFilledRectangle(healthbarx, healthbary, maxhealthbarwidth, healthbarheight);
+
+    if (playerhealth < 75) {
+        iSetColor(255, 0, 0);
+    } else {
+        iSetColor(255, 255, 0);
+    }
+    iFilledRectangle(healthbarx, healthbary, currenthealthbarwidth, healthbarheight);
+
+    iSetColor(255, 255, 255);
+    iRectangle(healthbarx, healthbary, maxhealthbarwidth, healthbarheight);
+
+    iSetColor(240, 240, 240);
+    iTextAdvanced(20, screenheight - 100, "SCORE:", 0.15, 1);
+    sprintf(scoredisplaystring, "%d", gamescore);
+    iTextAdvanced(130, screenheight - 100, scoredisplaystring, 0.15, 1);
+    
     iTextAdvanced(550, 20, "Press p to pause, r to resume and space to shoot", 0.10, 1);
+
+    if (issuperpOweractive) {
+        iSetColor(0, 255, 255);
+        iTextAdvanced(screenwidth / 2 - 100, screenheight - 50, "SUPERPOWER ACTIVATED!", 0.2, 1);
+    }
 }
 
-void showHomepage()
+void showgamehomepage()
 {
-    iShowLoadedImage(0, 0, &backgroundImg);
+    iShowLoadedImage(0, 0, &backgroundimage);
     iSetColor(240, 240, 240);
     iTextAdvanced(480, 550, "SPACE SHOOTER", 0.5, 7.5);
 
     iSetColor(0, 0, 0);
 
-    iTextAdvanced(screen_width / 2 - 190, screen_height - 275, "PLAY", 0.2, 1);
-    iShowImage(screen_width / 2 - 250, screen_height - 300, "SelectedAssets/start.png");
+    iTextAdvanced(screenwidth / 2 - 190, screenheight - 275, "PLAY", 0.2, 1);
+    iShowImage(screenwidth / 2 - 250, screenheight - 300, "SelectedAssets/start.png");
 
-    iTextAdvanced(screen_width / 2 - 225, screen_height - 345, "INSTRUCTIONS", 0.15, 1);
-    iShowImage(screen_width / 2 - 250, screen_height - 370, "SelectedAssets/start.png");
+    iTextAdvanced(screenwidth / 2 - 225, screenheight - 345, "INSTRUCTIONS", 0.15, 1);
+    iShowImage(screenwidth / 2 - 250, screenheight - 370, "SelectedAssets/start.png");
 
-    iTextAdvanced(screen_width / 2 - 190, screen_height - 415, "CREDITS", 0.15, 1);
-    iShowImage(screen_width / 2 - 250, screen_height - 440, "SelectedAssets/start.png");
+    iTextAdvanced(screenwidth / 2 - 190, screenheight - 415, "CREDITS", 0.15, 1);
+    iShowImage(screenwidth / 2 - 250, screenheight - 440, "SelectedAssets/start.png");
 
-    iTextAdvanced(screen_width / 2 - 190, screen_height - 485, "QUIT", 0.15, 1);
-    iShowImage(screen_width / 2 - 250, screen_height - 510, "SelectedAssets/Quit.png");
+    iTextAdvanced(screenwidth / 2 - 190, screenheight - 485, "QUIT", 0.15, 1);
+    iShowImage(screenwidth / 2 - 250, screenheight - 510, "SelectedAssets/Quit.png");
 }
 
-void showInstructions()
+void showgameinstructions()
 {
-    iShowLoadedImage(0, 0, &instructionImg);
+    iShowLoadedImage(0, 0, &instructionpageimage);
     iSetColor(255, 255, 255);
     iTextAdvanced(60, 650, "BACK", 0.15, 1);
 }
 
-void showCredits()
+void showgamecredits()
 {
-    iShowLoadedImage(0, 0, &creditsImg);
+    iShowLoadedImage(0, 0, &creditspageimage);
     iSetColor(255, 255, 255);
     iTextAdvanced(60, 620, "BACK", 0.15, 1);
 }
 
-void soundWorks()
+void managemusicplayback()
 {
-    if (startPage == true)
+    if (isgamerunning == true)
     {
-        iPauseSound(HomeMusic);
-        PlayMusic = iPlaySound("SelectedAssets/playMuic.wav", true, 100);
+        iPauseSound(homescreenmusic);
+        gameplaymusic = iPlaySound("SelectedAssets/playMuic.wav", true, 100);
     }
     else
     {
-        iPauseSound(PlayMusic);
-        HomeMusic = iPlaySound("SelectedAssets/Menu.wav", true, 100);
+        iPauseSound(gameplaymusic);
+        homescreenmusic = iPlaySound("SelectedAssets/Menu.wav", true, 100);
     }
 }
 
 void iDraw()
 {
     iClear();
-    if (homepage == true)
+    if (ishomepageactive == true)
     {
-        showHomepage();
+        showgamehomepage();
     }
-    else if (startPage == true)
+    else if (isgamerunning == true)
     {
-        if (game_over && show_end_screen) {
-            iClear();
-            iSetColor(255, 0, 0);
-            if (game_won)
+        // If the game is over and we're showing the end screen
+        if (isgameover && showendgamescreen) {
+            iClear(); // Clear the screen to show only the end message
+            if (hasgamebeenwon)
             {
                 iSetColor(0, 255, 0);
-                iTextAdvanced(screen_width / 2 - 200, screen_height / 2, "🎉 YOU WON!", 0.3, 2);
+                iTextAdvanced(screenwidth / 2 - 200, screenheight / 2, "🎉 YOU WON!", 0.3, 2);
             }
             else
             {
                 iSetColor(255, 0, 0);
-                iTextAdvanced(screen_width / 2 - 200, screen_height / 2, "💀 GAME OVER!", 0.3, 2);
+                iTextAdvanced(screenwidth / 2 - 200, screenheight / 2, "💀 GAME OVER!", 0.3, 2);
             }
 
-            auto now = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - end_screen_start_time).count();
-
-            if (duration >= END_SCREEN_DURATION_MS) {
-                startPage = false;
-                homepage = true;
-                resetGameState();
-                soundWorks();
+            endgametimercounter++;
+            // This assumes iDraw is called at regular intervals (e.g., 50ms by default in iGraphics).
+            // So 60 ticks will be 60 * 50ms = 3000ms = 3 seconds.
+            if (endgametimercounter >= end_screen_timer_ticks) {
+                isgamerunning = false;
+                ishomepageactive = true;
+                resetallgamestates();
+                managemusicplayback();
             }
-        } else {
-            startGame();
+        }
+        // If the game is running normally or paused
+        else {
+            rungamelogicanddisplay(); 
+            if (isgamepaused) {
+                iSetColor(0, 0, 0);
+                iFilledRectangle(0, 0, screenwidth, screenheight);
+                iSetColor(255, 255, 255);
+                iTextAdvanced(screenwidth / 2 - 100, screenheight / 2 + 20, "PAUSED", 0.25, 2);
+                iTextAdvanced(screenwidth / 2 - 170, screenheight / 2 - 30, "Press 'r' to resume", 0.15, 1);
+            }
         }
     }
-    else if (creditPage == true)
+    else if (iscreditpageactive == true)
     {
-        showCredits();
+        showgamecredits();
     }
-    else if (instructionPage == true)
+    else if (isinstructionpageactive == true)
     {
-        showInstructions();
+        showgameinstructions();
     }
 }
 
-void iMouseMove(int mx, int my)
+void iMouseMove(int mousex, int mousey)
 {
 }
 
-void iMouseDrag(int mx, int my)
+void iMouseDrag(int mousex, int mousey)
 {
 }
 
-void iMouse(int button, int state, int mx, int my)
+void iMouse(int button, int state, int mousex, int mousey)
 {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
-        std::cout << mx << " " << my << std::endl;
-
-        if (homepage == true)
+        if (ishomepageactive == true)
         {
-            if (mx >= (screen_width / 2 - 250) && mx <= (screen_width / 2 - 250) + 250 &&
-                my >= (screen_height - 300) && my <= (screen_height - 300) + 70)
+            if (mousex >= (screenwidth / 2 - 250) && mousex <= (screenwidth / 2 - 250) + 250 &&
+                mousey >= (screenheight - 300) && mousey <= (screenheight - 300) + 70)
             {
-                homepage = false;
-                startPage = true;
-                resetGameState();
-                spawnEnemies();
-                soundWorks();
+                ishomepageactive = false;
+                isgamerunning = true;
+                resetallgamestates();
+                spawnnewenemies();
+                managemusicplayback();
             }
-            else if (mx >= (screen_width / 2 - 250) && mx <= (screen_width / 2 - 250) + 250 &&
-                     my >= (screen_height - 370) && my <= (screen_height - 370) + 70)
+            else if (mousex >= (screenwidth / 2 - 250) && mousex <= (screenwidth / 2 - 250) + 250 &&
+                     mousey >= (screenheight - 370) && mousey <= (screenheight - 370) + 70)
             {
-                homepage = false;
-                instructionPage = true;
+                ishomepageactive = false;
+                isinstructionpageactive = true;
             }
-            else if (mx >= (screen_width / 2 - 250) && mx <= (screen_width / 2 - 250) + 250 &&
-                     my >= (screen_height - 440) && my <= (screen_height - 440) + 70)
+            else if (mousex >= (screenwidth / 2 - 250) && mousex <= (screenwidth / 2 - 250) + 250 &&
+                     mousey >= (screenheight - 440) && mousey <= (screenheight - 440) + 70)
             {
-                homepage = false;
-                creditPage = true;
+                ishomepageactive = false;
+                iscreditpageactive = true;
             }
-            else if (mx >= (screen_width / 2 - 250) && mx <= (screen_width / 2 - 250) + 250 &&
-                     my >= (screen_height - 510) && my <= (screen_height - 510) + 70)
+            else if (mousex >= (screenwidth / 2 - 250) && mousex <= (screenwidth / 2 - 250) + 250 &&
+                     mousey >= (screenheight - 510) && mousey <= (screenheight - 510) + 70)
             {
                 exit(0);
             }
         }
-        if (instructionPage == true && mx >= 49 && mx <= 176 && my >= 627 && my <= 725)
+        if (isinstructionpageactive == true && mousex >= 49 && mousex <= 176 && mousey >= 627 && mousey <= 725)
         {
-            instructionPage = false;
-            homepage = true;
+            isinstructionpageactive = false;
+            ishomepageactive = true;
         }
-        if (creditPage == true && mx >= 46 && mx <= 152 && my >= 595 && my <= 682)
+        if (iscreditpageactive == true && mousex >= 46 && mousex <= 152 && mousey >= 595 && mousey <= 682)
         {
-            creditPage = false;
-            homepage = true;
+            iscreditpageactive = false;
+            ishomepageactive = true;
         }
-    }
-    if (button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN)
-    {
     }
 }
 
-void iMouseWheel(int dir, int mx, int my)
+void iMouseWheel(int direction, int mousex, int mousey)
 {
 }
 
 void iKeyboard(unsigned char key)
 {
-    if (key == 'p')
+    if (key == 'p' || key == 'P')
     {
-        if (startPage && !game_over && !show_end_screen) {
-            iPauseTimer(0);
+        if (isgamerunning && !isgameover && !showendgamescreen) { // Ensure not already in end screen
+            isgamepaused = true;
         }
     }
-    else if (key == 'r')
+    else if (key == 'r' || key == 'R')
     {
-        if (startPage && !game_over && !show_end_screen) {
-            iResumeTimer(0);
+        if (isgamerunning && !isgameover && !showendgamescreen) { // Ensure not already in end screen
+            isgamepaused = false;
         }
     }
-    else if (key == 'q')
+    else if (key == 'q' || key == 'Q')
     {
         exit(0);
     }
-    else if (key == 'b')
+    else if (key == 'b' || key == 'B')
     {
-        if (instructionPage == true)
+        if (isinstructionpageactive == true)
         {
-            instructionPage = false;
-            homepage = true;
+            isinstructionpageactive = false;
+            ishomepageactive = true;
         }
-        else if (creditPage == true)
+        else if (iscreditpageactive == true)
         {
-            creditPage = false;
-            homepage = true;
+            iscreditpageactive = false;
+            ishomepageactive = true;
         }
-        else if (startPage == true)
+        else if (isgamerunning == true && !isgameover) // Only allow 'b' to return to menu if game is running and not over
         {
-            startPage = false;
-            homepage = true;
-            soundWorks();
-            resetGameState();
+            isgamerunning = false;
+            ishomepageactive = true;
+            managemusicplayback();
+            resetallgamestates();
         }
     }
     else if (key == ' ')
     {
-        shootBullet();
+        if (!issuperpOweractive && isgamerunning && !isgameover && !isgamepaused) { // Ensure game is running, not over, not paused
+            playerfiresbullet();
+        }
     }
 }
 
 void iSpecialKeyboard(unsigned char key)
 {
-    if (startPage && !game_over && !show_end_screen) {
-        if (key == GLUT_KEY_RIGHT && px <= screen_width - 100)
+    if (isgamerunning && !isgameover && !isgamepaused) {
+        if (key == GLUT_KEY_RIGHT && playerx <= (screenwidth / 2) - 100) // Changed boundary
         {
-            px += 15;
+            playerx += 15;
         }
-        if (key == GLUT_KEY_LEFT && px >= 0)
+        if (key == GLUT_KEY_LEFT && playerx >= 0)
         {
-            px -= 15;
+            playerx -= 15;
         }
-        if (key == GLUT_KEY_UP && py <= screen_height - 100)
+        if (key == GLUT_KEY_UP && playery <= screenheight - 100)
         {
-            py += 15;
+            playery += 15;
         }
-        if (key == GLUT_KEY_DOWN && py >= 0)
+        if (key == GLUT_KEY_DOWN && playery >= 0)
         {
-            py -= 15;
+            playery -= 15;
         }
     }
 }
-
-void loadResources()
+void loadallgameresources()
 {
-    iLoadImage(&backgroundImg, "SelectedAssets/background.png");
-    iResizeImage(&backgroundImg, screen_width, screen_height);
-    iLoadImage(&planeImg, "SelectedAssets/MainSpaceShip.png");
-    iResizeImage(&planeImg, 90, 90);
-    iLoadImage(&instructionImg, "SelectedAssets/instructionsFinal.png");
-    iResizeImage(&instructionImg, screen_width - 350, screen_height);
-    iLoadImage(&creditsImg, "SelectedAssets/creditsfinal.png");
-    iResizeImage(&creditsImg, screen_width - 350, screen_height);
-    iLoadImage(&enemy_shipsImg, "SelectedAssets/Ship3.png");
-    iResizeImage(&enemy_shipsImg, 100, 100);
-    iLoadImage(&finalBoss_shipImg, "SelectedAssets/FinalBoss.png");
-    iResizeImage(&finalBoss_shipImg, 120, 120);
-    iLoadImage(&bulletImg, "SelectedAssets/bullet.png");
+    iLoadImage(&backgroundimage, "SelectedAssets/background.png");
+    iResizeImage(&backgroundimage, screenwidth, screenheight);
+    iLoadImage(&playershipimage, "SelectedAssets/MainSpaceShip.png");
+    iResizeImage(&playershipimage, 90, 90);
+    iLoadImage(&instructionpageimage, "SelectedAssets/instructionsFinal.png");
+    iResizeImage(&instructionpageimage, screenwidth - 350, screenheight);
+    iLoadImage(&creditspageimage, "SelectedAssets/creditsfinal.png");
+    iResizeImage(&creditspageimage, screenwidth - 350, screenheight);
+    iLoadImage(&regularenemyshipimage, "SelectedAssets/Ship3.png");
+    iResizeImage(&regularenemyshipimage, 100, 100);
+    iLoadImage(&finalbossshipimage, "SelectedAssets/FinalBoss.png");
+    iResizeImage(&finalbossshipimage, 120, 120);
+    iLoadImage(&playerbulletimage, "SelectedAssets/bullet.png");
+    iLoadImage(&enemybulletimage, "SelectedAssets/Charge_1.png");
+    iResizeImage(&enemybulletimage, 20, 20);
+    iLoadImage(&fooditemimage, "SelectedAssets/food.png");
+    iResizeImage(&fooditemimage, 75, 75);
+    iLoadImage(&superpowerfoodimage, "SelectedAssets/superfood.png");
+    iResizeImage(&superpowerfoodimage, 75, 75);
 }
 
 int main(int argc, char *argv[])
 {
     glutInit(&argc, argv);
-    loadResources();
+    loadallgameresources();
     iInitializeSound();
-    PlayMusic = iPlaySound("SelectedAssets/playMuic.wav", true, 100);
-    HomeMusic = iPlaySound("SelectedAssets/Menu.wav", true, 100);
-    iPauseSound(PlayMusic);
+    gameplaymusic = iPlaySound("SelectedAssets/playMuic.wav", true, 100);
+    homescreenmusic = iPlaySound("SelectedAssets/Menu.wav", true, 100);
+    iPauseSound(gameplaymusic);
 
-    iSetTimer(50, missileMovement);
-    iSetTimer(1000, enemyShoot);
-    iSetTimer(50, enemyBulletMovement);
-    iSetTimer(50, enemy_movement);
+    iSetTimer(50, moveplayermissiles);
+    iSetTimer(500, fireenemybullets);
+    iSetTimer(50, moveenemybullets);
+    iSetTimer(50, moveenemies);
+    iSetTimer(2000, spawnnewenemies);
+    
+    // As iDraw is the main drawing function called by GLUT, and it now manages
+    // when to call rungamelogicanddisplay, there's no separate timer needed for rungamelogicanddisplay.
 
     srand(time(0));
 
-    iInitialize(screen_width, screen_height, "Space Shooter");
+    iInitialize(screenwidth, screenheight, "Space Shooter");
     return 0;
 }
