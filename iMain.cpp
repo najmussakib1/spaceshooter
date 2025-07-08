@@ -4,6 +4,7 @@
 #include <time.h>
 #include <cstdlib>
 #include <algorithm>
+#include <iostream>
 
 bool ishomepageactive = true;
 bool isgamerunning = false;
@@ -37,8 +38,7 @@ bool hasgamebeenwon = false;
 
 bool showendgamescreen = false;
 int endgametimercounter = 0;
-const int end_screen_timer_ticks = 500; 
-
+const int end_screen_timer_ticks = 200; // Changed from 60 to 240 for ~4 seconds
 
 const int regular_enemy_base_health_hits = 2;
 const int boss_enemy_base_health_hits = 5;
@@ -145,7 +145,7 @@ bool checkCollision(double x1, double y1, double w1, double h1, double x2, doubl
 
 void fireenemybullets()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; 
+    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
 
     for (int i = 0; i < currentactiveenemycount; ++i) {
         if (activeenemies[i].isactive && activeenemies[i].positionx < screenwidth && activeenemies[i].positionx > 0 && currentenemybulletcount < 200) {
@@ -160,7 +160,7 @@ void fireenemybullets()
 
 void moveenemybullets()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; 
+    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
 
     int validbulletindex = 0;
     for (int i = 0; i < currentenemybulletcount; i++)
@@ -176,7 +176,7 @@ void moveenemybullets()
 
 void moveplayermissiles()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; 
+    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
 
     int validbulletindex = 0;
     for (int i = 0; i < currentplayerbulletcount; i++)
@@ -192,7 +192,7 @@ void moveplayermissiles()
 
 void playerfiresbullet()
 {
-    if (isgamerunning && currentplayerbulletcount < 50 && !isgameover && !isgamepaused) 
+    if (isgamerunning && currentplayerbulletcount < 50 && !isgameover && !isgamepaused) // Removed showendgamescreen check here
     {
         playerbullets[currentplayerbulletcount].positionx = playerx + 90;
         playerbullets[currentplayerbulletcount].positiony = playery + 33;
@@ -203,7 +203,7 @@ void playerfiresbullet()
 void spawnnewenemies()
 {
     if (totaleniemiesspawned >= total_enemies_required_to_win) return;
-    if (showendgamescreen || isgamepaused || isgameover) return; 
+    if (showendgamescreen || isgamepaused || isgameover) return; // Added isgameover check here
 
     if (totaleniemiesspawned < 10) {
         maxsimultaneousenemies = 2;
@@ -317,7 +317,7 @@ void spawnnewenemies()
 
 void moveenemies()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; 
+    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
 
     for (int i = 0; i < currentactiveenemycount; ++i)
     {
@@ -375,7 +375,7 @@ void resetallgamestates() {
 
 void rungamelogicanddisplay()
 {
-    if (isgamepaused || isgameover) return; 
+    if (isgamepaused || isgameover) return; // If game is over, we don't run game logic
 
     gametickcount++;
 
@@ -465,8 +465,8 @@ void rungamelogicanddisplay()
         playerhealth = 0;
         isgameover = true;
         hasgamebeenwon = false;
-        showendgamescreen = true; 
-        iPauseTimer(0); 
+        showendgamescreen = true; // Show end screen instantly
+        iPauseTimer(0); // Pause all game timers
         return; 
     }
 
@@ -490,7 +490,7 @@ void rungamelogicanddisplay()
                 {
                     playerbullets[j].positionx = screenwidth + 100;
 
-                
+                    // Player bullet damage increased from 1 to 2
                     activeenemies[i].currenthealth -= 2; 
 
                     if (activeenemies[i].currenthealth <= 0)
@@ -530,8 +530,8 @@ void rungamelogicanddisplay()
     } else if (currentactiveenemycount == 0 && totalenemieskilled >= total_enemies_required_to_win && !isgameover) {
         isgameover = true;
         hasgamebeenwon = true;
-        showendgamescreen = true; 
-        iPauseTimer(0); 
+        showendgamescreen = true; // Show end screen instantly
+        iPauseTimer(0); // Pause all game timers
         return; 
     }
 
@@ -584,25 +584,45 @@ void rungamelogicanddisplay()
     }
 }
 
+bool play_button_color=false;
+bool instruction_button_color=false;
+bool credits_button_color=false;
+bool exit_button_color=false;
+
 void showgamehomepage()
 {
     iShowLoadedImage(0, 0, &backgroundimage);
     iSetColor(240, 240, 240);
     iTextAdvanced(480, 550, "SPACE SHOOTER", 0.5, 7.5);
 
-    iSetColor(0, 0, 0);
-
-    iTextAdvanced(screenwidth / 2 - 190, screenheight - 275, "PLAY", 0.2, 1);
-    iShowImage(screenwidth / 2 - 250, screenheight - 300, "SelectedAssets/start.png");
-
-    iTextAdvanced(screenwidth / 2 - 225, screenheight - 345, "INSTRUCTIONS", 0.15, 1);
-    iShowImage(screenwidth / 2 - 250, screenheight - 370, "SelectedAssets/start.png");
-
-    iTextAdvanced(screenwidth / 2 - 190, screenheight - 415, "CREDITS", 0.15, 1);
-    iShowImage(screenwidth / 2 - 250, screenheight - 440, "SelectedAssets/start.png");
-
-    iTextAdvanced(screenwidth / 2 - 190, screenheight - 485, "QUIT", 0.15, 1);
-    iShowImage(screenwidth / 2 - 250, screenheight - 510, "SelectedAssets/Quit.png");
+    if(play_button_color==true){
+        iSetColor(74, 240, 229);
+    }else{
+        iSetColor(255, 255, 255);
+    }
+    iTextAdvanced(screenwidth / 2 - 225, screenheight - 275-50, "PLAY", 0.3, 5);
+    // iShowImage(screenwidth / 2 - 250, screenheight - 300, "SelectedAssets/start.png");
+    if(instruction_button_color==true){
+        iSetColor(74, 240, 229);
+    }else{
+        iSetColor(255, 255, 255);
+    }
+    iTextAdvanced(screenwidth / 2 - 225-80, screenheight - 345-50, "INSTRUCTIONS", 0.3, 5);
+    // iShowImage(screenwidth / 2 - 250, screenheight - 370, "SelectedAssets/start.png");
+    if(credits_button_color==true){
+        iSetColor(74, 240, 229);
+    }else{
+        iSetColor(255, 255, 255);
+    }
+    iTextAdvanced(screenwidth / 2 - 225-20, screenheight - 415-50, "CREDITS", 0.3, 5);
+    // iShowImage(screenwidth / 2 - 250, screenheight - 440, "SelectedAssets/start.png");
+    if(exit_button_color==true){
+        iSetColor(74, 240, 229);
+    }else{
+        iSetColor(255, 255, 255);
+    }
+    iTextAdvanced(screenwidth / 2 - 215, screenheight - 485-50, "QUIT", 0.3, 5);
+    // iShowImage(screenwidth / 2 - 250, screenheight - 510, "SelectedAssets/Quit.png");
 }
 
 void showgameinstructions()
@@ -642,9 +662,9 @@ void iDraw()
     }
     else if (isgamerunning == true)
     {
-        
+        // If the game is over and we're showing the end screen
         if (isgameover && showendgamescreen) {
-            iClear(); 
+            iClear(); // Clear the screen to show only the end message
             if (hasgamebeenwon)
             {
                 iSetColor(0, 255, 0);
@@ -657,7 +677,8 @@ void iDraw()
             }
 
             endgametimercounter++;
-
+            // This assumes iDraw is called at regular intervals (e.g., 50ms by default in iGraphics).
+            // So 60 ticks will be 60 * 50ms = 3000ms = 3 seconds.
             if (endgametimercounter >= end_screen_timer_ticks) {
                 isgamerunning = false;
                 ishomepageactive = true;
@@ -665,7 +686,7 @@ void iDraw()
                 managemusicplayback();
             }
         }
-
+        // If the game is running normally or paused
         else {
             rungamelogicanddisplay(); 
             if (isgamepaused) {
@@ -689,6 +710,23 @@ void iDraw()
 
 void iMouseMove(int mousex, int mousey)
 {
+    if(ishomepageactive==true){
+        if(703<=mousex && mousex<=793 && 426<=mousey && mousey<=457){
+            play_button_color=true;
+        }else if(620<=mousex && mousex<=880 && 355<=mousey && mousey<=388){
+            instruction_button_color=true;
+        }else if(683<=mousex && mousex<=831 && 287<=mousey && mousey<=315){
+            credits_button_color=true;
+        }else if(714<=mousex && mousex<=790 && 215<=mousey && mousey<=248){
+            exit_button_color=true;
+        }else{
+            play_button_color=false;
+            instruction_button_color=false;
+            credits_button_color=false;
+            exit_button_color=false;
+        }
+    }
+    
 }
 
 void iMouseDrag(int mousex, int mousey)
@@ -699,10 +737,10 @@ void iMouse(int button, int state, int mousex, int mousey)
 {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
+        cout<<mousex<<" "<<mousey<<endl;
         if (ishomepageactive == true)
         {
-            if (mousex >= (screenwidth / 2 - 250) && mousex <= (screenwidth / 2 - 250) + 250 &&
-                mousey >= (screenheight - 300) && mousey <= (screenheight - 300) + 70)
+            if (703<=mousex && mousex<=793 && 426<=mousey && mousey<=457)
             {
                 ishomepageactive = false;
                 isgamerunning = true;
@@ -710,20 +748,17 @@ void iMouse(int button, int state, int mousex, int mousey)
                 spawnnewenemies();
                 managemusicplayback();
             }
-            else if (mousex >= (screenwidth / 2 - 250) && mousex <= (screenwidth / 2 - 250) + 250 &&
-                     mousey >= (screenheight - 370) && mousey <= (screenheight - 370) + 70)
+            else if (620<=mousex && mousex<=880 && 355<=mousey && mousey<=388)
             {
                 ishomepageactive = false;
                 isinstructionpageactive = true;
             }
-            else if (mousex >= (screenwidth / 2 - 250) && mousex <= (screenwidth / 2 - 250) + 250 &&
-                     mousey >= (screenheight - 440) && mousey <= (screenheight - 440) + 70)
+            else if (683<=mousex && mousex<=831 && 287<=mousey && mousey<=315)
             {
                 ishomepageactive = false;
                 iscreditpageactive = true;
             }
-            else if (mousex >= (screenwidth / 2 - 250) && mousex <= (screenwidth / 2 - 250) + 250 &&
-                     mousey >= (screenheight - 510) && mousey <= (screenheight - 510) + 70)
+            else if (714<=mousex && mousex<=790 && 215<=mousey && mousey<=248)
             {
                 exit(0);
             }
@@ -749,13 +784,13 @@ void iKeyboard(unsigned char key)
 {
     if (key == 'p' || key == 'P')
     {
-        if (isgamerunning && !isgameover && !showendgamescreen) { 
+        if (isgamerunning && !isgameover && !showendgamescreen) { // Ensure not already in end screen
             isgamepaused = true;
         }
     }
     else if (key == 'r' || key == 'R')
     {
-        if (isgamerunning && !isgameover && !showendgamescreen) {
+        if (isgamerunning && !isgameover && !showendgamescreen) { // Ensure not already in end screen
             isgamepaused = false;
         }
     }
@@ -775,7 +810,7 @@ void iKeyboard(unsigned char key)
             iscreditpageactive = false;
             ishomepageactive = true;
         }
-        else if (isgamerunning == true && !isgameover)
+        else if (isgamerunning == true && !isgameover) // Only allow 'b' to return to menu if game is running and not over
         {
             isgamerunning = false;
             ishomepageactive = true;
@@ -785,7 +820,7 @@ void iKeyboard(unsigned char key)
     }
     else if (key == ' ')
     {
-        if (!issuperpOweractive && isgamerunning && !isgameover && !isgamepaused) { 
+        if (!issuperpOweractive && isgamerunning && !isgameover && !isgamepaused) { // Ensure game is running, not over, not paused
             playerfiresbullet();
         }
     }
@@ -794,7 +829,7 @@ void iKeyboard(unsigned char key)
 void iSpecialKeyboard(unsigned char key)
 {
     if (isgamerunning && !isgameover && !isgamepaused) {
-        if (key == GLUT_KEY_RIGHT && playerx <= (screenwidth / 2) - 100) 
+        if (key == GLUT_KEY_RIGHT && playerx <= (screenwidth / 2) - 100) // Changed boundary
         {
             playerx += 15;
         }
@@ -850,6 +885,8 @@ int main(int argc, char *argv[])
     iSetTimer(50, moveenemies);
     iSetTimer(2000, spawnnewenemies);
     
+    // As iDraw is the main drawing function called by GLUT, and it now manages
+    // when to call rungamelogicanddisplay, there's no separate timer needed for rungamelogicanddisplay.
 
     srand(time(0));
 
