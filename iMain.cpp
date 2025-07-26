@@ -5,11 +5,27 @@
 #include <cstdlib>
 #include <algorithm>
 #include <iostream>
+#include <stdio.h>
+#include <string.h>
+#include <cctype>
+#include "iFont.h"
+
+struct PlayerScore {
+    char name[51];
+    int score;
+};
+
+bool isnameinputactive = false;
+char current_player_name[51] = "";
+int name_input_index = 0;
 
 bool ishomepageactive = true;
 bool isgamerunning = false;
 bool iscreditpageactive = false;
 bool isinstructionpageactive = false;
+bool isleaderboardpageactive=false;
+bool isyouwonpageactive = false; // New state for "You Won" page
+bool isgameoverpageactive = false; // New state for "Game Over" page
 
 bool isgamepaused = false;
 
@@ -35,15 +51,18 @@ int totalbossesspawned = 0;
 bool isgameover = false;
 bool hasgamebeenwon = false;
 
-
-bool showendgamescreen = false;
+bool showendgamescreen = false; // This flag can be reused for timing, but separate state booleans for win/lose screens are better for clarity
 int endgametimercounter = 0;
-const int end_screen_timer_ticks = 200; // Changed from 60 to 240 for ~4 seconds
+const int you_won_screen_duration_ticks = 40; // 2 seconds at 50ms/tick (40 * 50ms = 2000ms)
 
-const int regular_enemy_base_health_hits = 2;
-const int boss_enemy_base_health_hits = 5;
-const int regular_enemy_health_increase_per_5_kills = 1;
-const int boss_health_increase_per_10_kills = 1;
+// Added for score saving
+bool isscoresaved = false;
+
+// Updated enemy health values (twice the previous)
+const int regular_enemy_base_health_hits = 4;
+const int boss_enemy_base_health_hits = 10;
+const int regular_enemy_health_increase_per_5_kills = 2; // Twice the previous
+const int boss_health_increase_per_10_kills = 2; // Twice the previous
 
 #define MAX_ENEMIES 100
 struct Enemy {
@@ -54,6 +73,15 @@ struct Enemy {
     bool isactive;
     double targethorizontalposition;
 };
+struct Explosion {
+    double x, y;
+    bool isActive;
+    int startTime;
+};
+#define MAX_EXPLOSIONS 50
+Explosion activeExplosions[MAX_EXPLOSIONS];
+Image explosionSprites[6];
+
 
 Enemy activeenemies[MAX_ENEMIES];
 int currentactiveenemycount = 0;
@@ -80,7 +108,7 @@ int enemieskilledsincelastfooddrop = 0;
 const int enemies_killed_for_food_drop = 20;
 
 bool issuperpOweractive = false;
-int superpowerrstarttime = 0; 
+int superpowerrstarttime = 0;
 const int superpower_duration_ticks = 100;
 const int enemies_for_superpower_drop = 25;
 int enemieskilledsincelastsuperpower = 0;
@@ -116,7 +144,7 @@ int explosionsoundeffect;
 
 const double player_hitbox_offset_x = 15;
 const double player_hitbox_offset_y = 15;
-const double player_hitbox_width = 90 - (2 * player_hitbox_offset_x); 
+const double player_hitbox_width = 90 - (2 * player_hitbox_offset_x);
 const double player_hitbox_height = 90 - (2 * player_hitbox_offset_y);
 
 const double regular_enemy_hitbox_offset_x = 20;
@@ -135,6 +163,47 @@ const double bullet_height = 20;
 const double food_width = 50;
 const double food_height = 50;
 
+bool compareScores(const PlayerScore& a, const PlayerScore& b) {
+    return a.score > b.score;
+}
+
+void saveScoreToFile() {
+    FILE *fp = fopen("leaderboard.txt", "a");
+    if (fp != NULL) {
+        fprintf(fp, "%s %d\n", current_player_name, gamescore);
+        fclose(fp);
+    }
+}
+
+void loadScoresFromFile(PlayerScore scores[], int& count) {
+    FILE *fp = fopen("leaderboard.txt", "r");
+    count = 0;
+    if (fp != NULL) {
+        while (fscanf(fp, "%s %d", scores[count].name, &scores[count].score) != EOF && count < 100) {
+            count++;
+        }
+        fclose(fp);
+    }
+    std::sort(scores, scores + count, compareScores);
+}
+
+void showNameInputScreen() {
+    iClear();
+    iShowLoadedImage(0, 0, &backgroundimage);
+    iSetColor(255, 255, 0);
+
+    // This screen is now only for pre-game name input
+    iTextAdvanced(screenwidth / 2 - 350, screenheight / 2 + 150, "Enter Your Name to Start Game:", 0.3, 2);
+
+    iSetColor(255, 255, 255);
+    iTextAdvanced(screenwidth / 2 - 250, screenheight / 2 + 50, "Enter Your Name:", 0.2, 1);
+    iFilledRectangle(screenwidth / 2 - 250, screenheight / 2 - 20, 500, 50);
+    iSetColor(0, 0, 0);
+    iTextAdvanced(screenwidth / 2 - 240, screenheight / 2 - 5, current_player_name, 0.2, 1);
+    iSetColor(255, 255, 255);
+    iTextAdvanced(screenwidth / 2 - 250, screenheight / 2 - 100, "Press 'Enter' to confirm and start game.", 0.15, 1);
+}
+
 bool checkCollision(double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2)
 {
     return !(x2 > x1 + w1 ||
@@ -145,7 +214,7 @@ bool checkCollision(double x1, double y1, double w1, double h1, double x2, doubl
 
 void fireenemybullets()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+    if (!isgamerunning || isgameover || isgamepaused) return;
 
     for (int i = 0; i < currentactiveenemycount; ++i) {
         if (activeenemies[i].isactive && activeenemies[i].positionx < screenwidth && activeenemies[i].positionx > 0 && currentenemybulletcount < 200) {
@@ -160,7 +229,7 @@ void fireenemybullets()
 
 void moveenemybullets()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+    if (!isgamerunning || isgameover || isgamepaused) return;
 
     int validbulletindex = 0;
     for (int i = 0; i < currentenemybulletcount; i++)
@@ -176,7 +245,7 @@ void moveenemybullets()
 
 void moveplayermissiles()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+    if (!isgamerunning || isgameover || isgamepaused) return;
 
     int validbulletindex = 0;
     for (int i = 0; i < currentplayerbulletcount; i++)
@@ -192,7 +261,7 @@ void moveplayermissiles()
 
 void playerfiresbullet()
 {
-    if (isgamerunning && currentplayerbulletcount < 50 && !isgameover && !isgamepaused) // Removed showendgamescreen check here
+    if (isgamerunning && currentplayerbulletcount < 50 && !isgameover && !isgamepaused)
     {
         playerbullets[currentplayerbulletcount].positionx = playerx + 90;
         playerbullets[currentplayerbulletcount].positiony = playery + 33;
@@ -203,7 +272,7 @@ void playerfiresbullet()
 void spawnnewenemies()
 {
     if (totaleniemiesspawned >= total_enemies_required_to_win) return;
-    if (showendgamescreen || isgamepaused || isgameover) return; // Added isgameover check here
+    if (showendgamescreen || isgamepaused || isgameover) return;
 
     if (totaleniemiesspawned < 10) {
         maxsimultaneousenemies = 2;
@@ -225,7 +294,7 @@ void spawnnewenemies()
         enemiestospawninthiscall = total_enemies_required_to_win - totaleniemiesspawned;
     }
     if (enemiestospawninthiscall <= 0) return;
-    
+
     if (currentactiveenemycount + enemiestospawninthiscall > MAX_ENEMIES) {
         enemiestospawninthiscall = MAX_ENEMIES - currentactiveenemycount;
         if (enemiestospawninthiscall <= 0) return;
@@ -241,7 +310,7 @@ void spawnnewenemies()
                 int remainingenemies = total_enemies_required_to_win - totaleniemiesspawned;
                 int remainingbosses = total_bosses_in_game - totalbossesspawned;
                 int remainingregular = remainingenemies - remainingbosses;
-                
+
                 if (remainingregular <= 0 && remainingbosses > 0) {shouldspawnboss = true;}
                 else if (remainingbosses <= 0) {shouldspawnboss = false;}
                 else {
@@ -261,7 +330,7 @@ void spawnnewenemies()
         }
 
         int enemyhealth = shouldspawnboss ? (boss_enemy_base_health_hits + (totalenemieskilled / 10) * boss_health_increase_per_10_kills) :
-                                           (regular_enemy_base_health_hits + (totalenemieskilled / 5) * regular_enemy_health_increase_per_5_kills);
+                                          (regular_enemy_base_health_hits + (totalenemieskilled / 5) * regular_enemy_health_increase_per_5_kills);
         double enemyspeed = shouldspawnboss ? 10 : 6;
         double enemyheight = shouldspawnboss ? 120 : 100;
 
@@ -272,7 +341,7 @@ void spawnnewenemies()
             spawnyposition = rand() % (int)(screenheight - enemyheight - 50) + 50;
             positionisclear = true;
             for (int k = 0; k < currentactiveenemycount; ++k) {
-                if (activeenemies[k].isactive && std::abs(activeenemies[k].positiony - spawnyposition) < (enemyheight / 2 + 50)) {
+                if (activeenemies[k].isactive && abs(activeenemies[k].positiony - spawnyposition) < (enemyheight / 2 + 50)) {
                     positionisclear = false;
                     break;
                 }
@@ -287,7 +356,7 @@ void spawnnewenemies()
         activeenemies[currentactiveenemycount].isbossenemy = shouldspawnboss;
         activeenemies[currentactiveenemycount].isactive = true;
         activeenemies[currentactiveenemycount].targethorizontalposition = shouldspawnboss ? screenwidth - 550 : screenwidth - 450;
-        
+
         currentactiveenemycount++;
 
         if (shouldspawnboss) {
@@ -317,7 +386,7 @@ void spawnnewenemies()
 
 void moveenemies()
 {
-    if (!isgamerunning || isgameover || isgamepaused) return; // Removed showendgamescreen check here
+    if (!isgamerunning || isgameover || isgamepaused) return;
 
     for (int i = 0; i < currentactiveenemycount; ++i)
     {
@@ -360,24 +429,57 @@ void resetallgamestates() {
     regularenemieskilledsincelastbosswave = 0;
     isinbosswave = false;
     currentbossenemiesinwave = 0;
-    showendgamescreen = false;
-    endgametimercounter = 0;
+    endgametimercounter = 0; // Corrected: Used endgametimercounter
     currentfooditemcount = 0;
     enemieskilledsincelastfooddrop = 0;
     enemieskilledsincelastsuperpower = 0;
     issuperpOweractive = false;
     superpowerrstarttime = 0;
     superpowerbullettimer = 0;
-    gametickcount = 0;
+    gametickcount = 0; // Reset gametickcount here as well for a fresh start
     isgamepaused = false;
-    iResumeTimer(0); // Ensure timers are resumed when starting a new game
+    isyouwonpageactive = false; // Reset "You Won" page state
+    isgameoverpageactive = false; // Reset "Game Over" page state
+    isscoresaved = false; // Reset score saved state
+    // isnameinputactive, name_input_index, current_player_name are NOT reset here,
+    // as they are handled explicitly when entering name input.
+    iResumeTimer(0);
+}
+void drawExplosions() {
+    if (isgamepaused) return;
+    // Adjusted ticks_per_frame to show 6 images within approximately 0.1 seconds
+    // (2 ticks/frame * 6 frames * 10ms/tick = 120ms = 0.12 seconds)
+    const int ticks_per_frame = 2;
+    const int total_frames = 6;
+    for (int i = 0; i < MAX_EXPLOSIONS; i++) {
+        if (activeExplosions[i].isActive) {
+            int ticks_since_start = gametickcount - activeExplosions[i].startTime;
+            int frame_index = ticks_since_start / ticks_per_frame;
+            if (frame_index >= total_frames) {
+                activeExplosions[i].isActive = false;
+            } else {
+                iShowLoadedImage(activeExplosions[i].x, activeExplosions[i].y, &explosionSprites[frame_index]);
+            }
+        }
+    }
+}
+void createExplosion(double x, double y) {
+    for (int i = 0; i < MAX_EXPLOSIONS; i++) {
+        if (!activeExplosions[i].isActive) {
+            activeExplosions[i].x = x;
+            activeExplosions[i].y = y;
+            activeExplosions[i].isActive = true;
+            activeExplosions[i].startTime = gametickcount;
+            return;
+        }
+    }
 }
 
 void rungamelogicanddisplay()
 {
-    if (isgamepaused || isgameover) return; // If game is over, we don't run game logic
+    if (isgamepaused || isgameover) return;
 
-    gametickcount++;
+    // gametickcount++ moved to iDraw()
 
     if (issuperpOweractive && (gametickcount - superpowerrstarttime >= superpower_duration_ticks)) {
         issuperpOweractive = false;
@@ -397,6 +499,9 @@ void rungamelogicanddisplay()
         }
     }
 
+    // Draw explosions here, as requested
+    drawExplosions();
+
     for (int i = 0; i < currentplayerbulletcount; i++)
         iShowLoadedImage(playerbullets[i].positionx, playerbullets[i].positiony, &playerbulletimage);
 
@@ -412,7 +517,7 @@ void rungamelogicanddisplay()
             } else {
                 iShowLoadedImage(fooditemsonScreen[i].positionx, fooditemsonScreen[i].positiony, &fooditemimage);
             }
-            
+
             if (fooditemsonScreen[i].positionx >= -100) {
                 fooditemsonScreen[validfooditemindex++] = fooditemsonScreen[i];
             } else {
@@ -421,6 +526,7 @@ void rungamelogicanddisplay()
         }
     }
     currentfooditemcount = validfooditemindex;
+
 
     validfooditemindex = 0;
     for (int i = 0; i < currentfooditemcount; ++i) {
@@ -447,9 +553,9 @@ void rungamelogicanddisplay()
     for (int i = 0; i < currentenemybulletcount; i++)
     {
         if (!issuperpOweractive && checkCollision(enemybullets[i].positionx, enemybullets[i].positiony, bullet_width, bullet_height,
-                                                playerx + player_hitbox_offset_x, playery + player_hitbox_offset_y, player_hitbox_width, player_hitbox_height))
+                                                 playerx + player_hitbox_offset_x, playery + player_hitbox_offset_y, player_hitbox_width, player_hitbox_height))
         {
-            playerhealth -= (enemybullets[i].firedbyboss ? 4 : 2);
+            playerhealth -= (enemybullets[i].firedbyboss ? 3 : 2); // Increased enemy missile power
             enemybullets[i].positionx = -100;
         }
         else if (enemybullets[i].positionx >= 0)
@@ -459,15 +565,18 @@ void rungamelogicanddisplay()
     }
     currentenemybulletcount = validenemybulletindex;
 
-    // Game Over condition
-    if (playerhealth <= 0 && !isgameover) 
+    if (playerhealth <= 0 && !isgameover)
     {
         playerhealth = 0;
         isgameover = true;
         hasgamebeenwon = false;
-        showendgamescreen = true; // Show end screen instantly
-        iPauseTimer(0); // Pause all game timers
-        return; 
+        isgamerunning = false;
+        isgameoverpageactive = true; // Activate "Game Over" page
+        endgametimercounter = gametickcount; // Start timer for "Game Over" page
+        isscoresaved = false; // Make sure score saving is ready for this end state
+        // resetallgamestates(); // Will be called after the "Game Over" page times out
+        iPauseTimer(0);
+        return;
     }
 
     int nextactiveenemywriteindex = 0;
@@ -490,27 +599,24 @@ void rungamelogicanddisplay()
                 {
                     playerbullets[j].positionx = screenwidth + 100;
 
-                    // Player bullet damage increased from 1 to 2
-                    activeenemies[i].currenthealth -= 2; 
+                    activeenemies[i].currenthealth -= 2;
 
                     if (activeenemies[i].currenthealth <= 0)
                     {
+                        createExplosion(activeenemies[i].positionx, activeenemies[i].positiony);
+                        iPlaySound("SelectedAssets/explode.wav", false, 100);
                         activeenemies[i].isactive = false;
                         totalenemieskilled++;
-                        iPlaySound("SelectedAssets/explode.wav", false, 100);
-
                         if (activeenemies[i].isbossenemy) {
                             gamescore += 100;
-                            playerhealth = std::min(playerhealth + 10, max_player_health);
                         } else {
                             gamescore += 50;
-                            playerhealth = std::min(playerhealth + 5, max_player_health);
                         }
                         enemieskilledsincelastfooddrop++;
                         enemieskilledsincelastsuperpower++;
                     }
                 }
-                 if (playerbullets[j].positionx <= screenwidth) {
+                   if (playerbullets[j].positionx <= screenwidth) {
                     playerbullets[validplayerbulletindex++] = playerbullets[j];
                 }
             }
@@ -530,9 +636,13 @@ void rungamelogicanddisplay()
     } else if (currentactiveenemycount == 0 && totalenemieskilled >= total_enemies_required_to_win && !isgameover) {
         isgameover = true;
         hasgamebeenwon = true;
-        showendgamescreen = true; // Show end screen instantly
-        iPauseTimer(0); // Pause all game timers
-        return; 
+        isgamerunning = false;
+        isyouwonpageactive = true; // Activate "You Won" page
+        endgametimercounter = gametickcount; // Start timer for "You Won" page
+        isscoresaved = false; // Make sure score saving is ready for this end state
+        // resetallgamestates(); // This will be called after "You Won" page times out
+        iPauseTimer(0);
+        return;
     }
 
     if (issuperpOweractive) {
@@ -575,7 +685,7 @@ void rungamelogicanddisplay()
     iTextAdvanced(20, screenheight - 100, "SCORE:", 0.15, 1);
     sprintf(scoredisplaystring, "%d", gamescore);
     iTextAdvanced(130, screenheight - 100, scoredisplaystring, 0.15, 1);
-    
+
     iTextAdvanced(550, 20, "Press p to pause, r to resume and space to shoot", 0.10, 1);
 
     if (issuperpOweractive) {
@@ -588,57 +698,100 @@ bool play_button_color=false;
 bool instruction_button_color=false;
 bool credits_button_color=false;
 bool exit_button_color=false;
+bool leader_board_color=false;
 
 void showgamehomepage()
 {
     iShowLoadedImage(0, 0, &backgroundimage);
     iSetColor(240, 240, 240);
-    iTextAdvanced(480, 550, "SPACE SHOOTER", 0.5, 7.5);
-
+    // iTextAdvanced(480, 550, "SPACE SHOOTER", 0.5, 7.5);
+    iShowText(480, 550, "SPACE SHOOTER", "assets/fonts/RubikDoodleShadow-Regular.ttf", 72);
     if(play_button_color==true){
         iSetColor(74, 240, 229);
     }else{
         iSetColor(255, 255, 255);
     }
-    iTextAdvanced(screenwidth / 2 - 225, screenheight - 275-50, "PLAY", 0.3, 5);
-    // iShowImage(screenwidth / 2 - 250, screenheight - 300, "SelectedAssets/start.png");
+    // iTextAdvanced(screenwidth / 2 - 225, screenheight - 275-50, "PLAY", 0.3, 5);
+    iShowText(screenwidth / 2 - 225, screenheight - 275-50,"PLAY", "assets/fonts/Monoton-Regular.ttf", 35);
+
+    if(leader_board_color==true){
+        iSetColor(74, 240, 229);
+    }else{
+        iSetColor(255, 255, 255);
+    }
+    // iTextAdvanced(screenwidth / 2 - 245-80, screenheight - 345-50, "LEADER BOARD", 0.3, 5);
+    iShowText(screenwidth / 2 - 245-80, screenheight - 345-50,"LEADER BOARD", "assets/fonts/Monoton-Regular.ttf", 35);
+
     if(instruction_button_color==true){
         iSetColor(74, 240, 229);
     }else{
         iSetColor(255, 255, 255);
     }
-    iTextAdvanced(screenwidth / 2 - 225-80, screenheight - 345-50, "INSTRUCTIONS", 0.3, 5);
-    // iShowImage(screenwidth / 2 - 250, screenheight - 370, "SelectedAssets/start.png");
+    // iTextAdvanced(screenwidth / 2 - 225-80, screenheight - 415-50, "INSTRUCTIONS", 0.3, 5);
+    iShowText(screenwidth / 2 - 225-80, screenheight - 415-50, "INSTRUCTIONS", "assets/fonts/Monoton-Regular.ttf", 35);
+
     if(credits_button_color==true){
         iSetColor(74, 240, 229);
     }else{
         iSetColor(255, 255, 255);
     }
-    iTextAdvanced(screenwidth / 2 - 225-20, screenheight - 415-50, "CREDITS", 0.3, 5);
-    // iShowImage(screenwidth / 2 - 250, screenheight - 440, "SelectedAssets/start.png");
+    // iTextAdvanced(screenwidth / 2 - 225-20, screenheight - 485-50, "CREDITS", 0.3, 5);
+    iShowText(screenwidth / 2 - 225-20, screenheight - 485-50, "CREDITS", "assets/fonts/Monoton-Regular.ttf", 35);
     if(exit_button_color==true){
         iSetColor(74, 240, 229);
     }else{
         iSetColor(255, 255, 255);
     }
-    iTextAdvanced(screenwidth / 2 - 215, screenheight - 485-50, "QUIT", 0.3, 5);
-    // iShowImage(screenwidth / 2 - 250, screenheight - 510, "SelectedAssets/Quit.png");
+    // iTextAdvanced(screenwidth / 2 - 215, screenheight - 555-50, "QUIT", 0.3, 5);
+    iShowText(screenwidth / 2 - 215, screenheight - 555-50, "QUIT", "assets/fonts/Monoton-Regular.ttf", 35);
 }
+
+void showleaderboard(){
+    iShowLoadedImage(0, 0, &backgroundimage);
+    iSetColor(255, 255, 0);
+    iTextAdvanced(screenwidth / 2 - 250-90, screenheight - 100, "LEADERBOARD", 0.4, 5);
+
+    PlayerScore top_scores[100];
+    int score_count = 0;
+    loadScoresFromFile(top_scores, score_count);
+
+    iSetColor(255, 255, 255);
+    int display_count = std::min(5, score_count); // Use std::min
+    if (display_count == 0) {
+        iTextAdvanced(screenwidth / 2 - 200-90, screenheight / 2, "No scores yet. Go play!", 0.2, 1);
+    } else {
+        char rank_str[10];
+        char score_str[20];
+        iTextAdvanced(screenwidth / 2 - 300-90, screenheight - 200, "RANK", 0.2, 1);
+        iTextAdvanced(screenwidth / 2 - 150-90, screenheight - 200, "NAME", 0.2, 1);
+        iTextAdvanced(screenwidth / 2 + 200-90, screenheight - 200, "SCORE", 0.2, 1);
+
+        for (int i = 0; i < display_count; ++i) {
+            double y_pos = screenheight - 280 - (i * 60);
+            sprintf(rank_str, "%d.", i + 1);
+            iTextAdvanced(screenwidth / 2 - 300-90, y_pos, rank_str, 0.2, 1);
+            iTextAdvanced(screenwidth / 2 - 150-90, y_pos, top_scores[i].name, 0.2, 1);
+            sprintf(score_str, "%d", top_scores[i].score);
+            iTextAdvanced(screenwidth / 2 + 200-90, y_pos, score_str, 0.2, 1);
+        }
+    }
+    iTextAdvanced(650, 20, "Press b to go back to homepage", 0.10, 1);
+}
+
 
 void showgameinstructions()
 {
     iShowLoadedImage(0, 0, &instructionpageimage);
     iSetColor(255, 255, 255);
-    iTextAdvanced(60, 650, "BACK", 0.15, 1);
+    // iTextAdvanced(60, 650, "BACK", 0.15, 1); // Removed
 }
 
 void showgamecredits()
 {
     iShowLoadedImage(0, 0, &creditspageimage);
     iSetColor(255, 255, 255);
-    iTextAdvanced(60, 620, "BACK", 0.15, 1);
+    // iTextAdvanced(60, 620, "BACK", 0.15, 1); // Removed
 }
-
 void managemusicplayback()
 {
     if (isgamerunning == true)
@@ -653,8 +806,50 @@ void managemusicplayback()
     }
 }
 
+void showyouwonpage() {
+    iShowLoadedImage(0, 0, &backgroundimage);
+    iSetColor(0, 255, 0); // Green color
+    iTextAdvanced(screenwidth / 2 - 200, screenheight / 2, "YOU WON!", 0.5, 5);
+
+    if (gametickcount - endgametimercounter >= you_won_screen_duration_ticks) {
+        if (!isscoresaved) {
+            saveScoreToFile();
+            isscoresaved = true;
+        }
+        isyouwonpageactive = false;
+        ishomepageactive = true;
+        endgametimercounter = 0; // Reset timer for next win
+        resetallgamestates(); // Reset after the "You Won" screen is done
+        managemusicplayback(); // Play homepage music
+    }
+}
+
+void showgameoverpage() {
+    iShowLoadedImage(0, 0, &backgroundimage);
+    iSetColor(255, 0, 0); // Red color
+    iTextAdvanced(screenwidth / 2 - 200, screenheight / 2, "GAME OVER!", 0.5, 5);
+
+    if (gametickcount - endgametimercounter >= you_won_screen_duration_ticks) { // Reusing same duration
+        if (!isscoresaved) {
+            saveScoreToFile();
+            isscoresaved = true;
+        }
+        isgameoverpageactive = false;
+        ishomepageactive = true;
+        endgametimercounter = 0; // Reset timer
+        resetallgamestates(); // Reset after the "Game Over" screen is done
+        managemusicplayback(); // Play homepage music
+    }
+}
+
+
+
+
 void iDraw()
 {
+    // Increment gametickcount at the start of iDraw() to ensure it always progresses
+    gametickcount++;
+
     iClear();
     if (ishomepageactive == true)
     {
@@ -662,41 +857,18 @@ void iDraw()
     }
     else if (isgamerunning == true)
     {
-        // If the game is over and we're showing the end screen
-        if (isgameover && showendgamescreen) {
-            iClear(); // Clear the screen to show only the end message
-            if (hasgamebeenwon)
-            {
-                iSetColor(0, 255, 0);
-                iTextAdvanced(screenwidth / 2 - 200, screenheight / 2, "🎉 YOU WON!", 0.3, 2);
-            }
-            else
-            {
-                iSetColor(255, 0, 0);
-                iTextAdvanced(screenwidth / 2 - 200, screenheight / 2, "💀 GAME OVER!", 0.3, 2);
-            }
-
-            endgametimercounter++;
-            // This assumes iDraw is called at regular intervals (e.g., 50ms by default in iGraphics).
-            // So 60 ticks will be 60 * 50ms = 3000ms = 3 seconds.
-            if (endgametimercounter >= end_screen_timer_ticks) {
-                isgamerunning = false;
-                ishomepageactive = true;
-                resetallgamestates();
-                managemusicplayback();
-            }
+        rungamelogicanddisplay();
+        if (isgamepaused) {
+            iSetColor(0, 0, 0);
+            iFilledRectangle(0, 0, screenwidth, screenheight);
+            iSetColor(255, 255, 255);
+            iTextAdvanced(screenwidth / 2 - 100, screenheight / 2 + 20, "PAUSED", 0.25, 2);
+            iTextAdvanced(screenwidth / 2 - 170, screenheight / 2 - 30, "Press 'r' to resume", 0.15, 1);
         }
-        // If the game is running normally or paused
-        else {
-            rungamelogicanddisplay(); 
-            if (isgamepaused) {
-                iSetColor(0, 0, 0);
-                iFilledRectangle(0, 0, screenwidth, screenheight);
-                iSetColor(255, 255, 255);
-                iTextAdvanced(screenwidth / 2 - 100, screenheight / 2 + 20, "PAUSED", 0.25, 2);
-                iTextAdvanced(screenwidth / 2 - 170, screenheight / 2 - 30, "Press 'r' to resume", 0.15, 1);
-            }
-        }
+    }
+    else if (isnameinputactive)
+    {
+        showNameInputScreen();
     }
     else if (iscreditpageactive == true)
     {
@@ -705,28 +877,42 @@ void iDraw()
     else if (isinstructionpageactive == true)
     {
         showgameinstructions();
+    }else if(isleaderboardpageactive==true){
+        showleaderboard();
+    }
+    else if (isyouwonpageactive == true) // New condition for "You Won" page
+    {
+        showyouwonpage();
+    }
+    else if (isgameoverpageactive == true) // New condition for "Game Over" page
+    {
+        showgameoverpage();
     }
 }
 
 void iMouseMove(int mousex, int mousey)
 {
     if(ishomepageactive==true){
-        if(703<=mousex && mousex<=793 && 426<=mousey && mousey<=457){
+        if(701<=mousex && mousex<=794 && 426<=mousey && mousey<=457){
             play_button_color=true;
-        }else if(620<=mousex && mousex<=880 && 355<=mousey && mousey<=388){
+        }else if(620<=mousex && mousex<=880 && 285<=mousey && mousey<=317){
             instruction_button_color=true;
-        }else if(683<=mousex && mousex<=831 && 287<=mousey && mousey<=315){
+        }else if(683<=mousex && mousex<=831 && 213<=mousey && mousey<=249){
             credits_button_color=true;
-        }else if(714<=mousex && mousex<=790 && 215<=mousey && mousey<=248){
+        }else if(710<=mousex && mousex<=790 && 145<=mousey && mousey<=181){
             exit_button_color=true;
-        }else{
+        }else if(600<=mousex && mousex<=896 && 353<=mousey && mousey<=388){
+            leader_board_color=true;
+        }
+        else{
             play_button_color=false;
             instruction_button_color=false;
             credits_button_color=false;
             exit_button_color=false;
+            leader_board_color=false;
         }
     }
-    
+
 }
 
 void iMouseDrag(int mousex, int mousey)
@@ -737,32 +923,37 @@ void iMouse(int button, int state, int mousex, int mousey)
 {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
-        cout<<mousex<<" "<<mousey<<endl;
+        std::cout<<mousex<<" "<<mousey<<std::endl; // Use std::cout
         if (ishomepageactive == true)
         {
             if (703<=mousex && mousex<=793 && 426<=mousey && mousey<=457)
             {
                 ishomepageactive = false;
-                isgamerunning = true;
-                resetallgamestates();
-                spawnnewenemies();
-                managemusicplayback();
+                isnameinputactive = true; // Activate name input screen
+                strcpy(current_player_name, ""); // Clear previous name
+                name_input_index = 0; // Reset name input index
             }
-            else if (620<=mousex && mousex<=880 && 355<=mousey && mousey<=388)
+            else if(600<=mousex && mousex<=896 && 353<=mousey && mousey<=388)
+            {
+                isleaderboardpageactive=true;
+                ishomepageactive=false;
+            }
+            else if (621<=mousex && mousex<=881 && 285<=mousey && mousey<=317)
             {
                 ishomepageactive = false;
                 isinstructionpageactive = true;
             }
-            else if (683<=mousex && mousex<=831 && 287<=mousey && mousey<=315)
+            else if (682<=mousex && mousex<=829 && 213<=mousey && mousey<=249)
             {
                 ishomepageactive = false;
                 iscreditpageactive = true;
             }
-            else if (714<=mousex && mousex<=790 && 215<=mousey && mousey<=248)
+            else if (710<=mousex && mousex<=790 && 145<=mousey && mousey<=181)
             {
                 exit(0);
             }
         }
+        // These checks remain valid for navigating back if not from clicking a specific "BACK" text
         if (isinstructionpageactive == true && mousex >= 49 && mousex <= 176 && mousey >= 627 && mousey <= 725)
         {
             isinstructionpageactive = false;
@@ -780,17 +971,42 @@ void iMouseWheel(int direction, int mousex, int mousey)
 {
 }
 
-void iKeyboard(unsigned char key)
+void iKeyPress(unsigned char key)
 {
+    if (isnameinputactive) {
+        if (key == '\r') {
+            if (name_input_index > 0) {
+                current_player_name[name_input_index] = '\0';
+                // Score is saved after game completion, not here (pre-game input)
+            }
+            isnameinputactive = false;
+            ishomepageactive = false; // Go to game screen
+            isgamerunning = true; // Start the game
+            resetallgamestates(); // Reset and prepare game variables
+            spawnnewenemies(); // Spawn initial enemies
+            managemusicplayback(); // Start game music
+        } else if (key == '\b') {
+            if (name_input_index > 0) {
+                name_input_index--;
+                current_player_name[name_input_index] = '\0';
+            }
+        } else if (name_input_index < 50 && isalnum(key)) {
+            current_player_name[name_input_index] = key;
+            name_input_index++;
+            current_player_name[name_input_index] = '\0';
+        }
+        return; // Consume the key press
+    }
+
     if (key == 'p' || key == 'P')
     {
-        if (isgamerunning && !isgameover && !showendgamescreen) { // Ensure not already in end screen
+        if (isgamerunning && !isgameover) {
             isgamepaused = true;
         }
     }
     else if (key == 'r' || key == 'R')
     {
-        if (isgamerunning && !isgameover && !showendgamescreen) { // Ensure not already in end screen
+        if (isgamerunning && !isgameover) {
             isgamepaused = false;
         }
     }
@@ -810,26 +1026,31 @@ void iKeyboard(unsigned char key)
             iscreditpageactive = false;
             ishomepageactive = true;
         }
-        else if (isgamerunning == true && !isgameover) // Only allow 'b' to return to menu if game is running and not over
+        else if (isgamerunning == true && !isgameover)
         {
             isgamerunning = false;
             ishomepageactive = true;
             managemusicplayback();
             resetallgamestates();
         }
+        else if(isleaderboardpageactive==true){
+            isleaderboardpageactive=false;
+            ishomepageactive=true;
+        }
+
     }
     else if (key == ' ')
     {
-        if (!issuperpOweractive && isgamerunning && !isgameover && !isgamepaused) { // Ensure game is running, not over, not paused
+        if (!issuperpOweractive && isgamerunning && !isgameover && !isgamepaused) {
             playerfiresbullet();
         }
     }
 }
 
-void iSpecialKeyboard(unsigned char key)
+void iSpecialKeyPress(unsigned char key)
 {
     if (isgamerunning && !isgameover && !isgamepaused) {
-        if (key == GLUT_KEY_RIGHT && playerx <= (screenwidth / 2) - 100) // Changed boundary
+        if (key == GLUT_KEY_RIGHT && playerx <= (screenwidth / 2) - 100)
         {
             playerx += 15;
         }
@@ -868,6 +1089,17 @@ void loadallgameresources()
     iResizeImage(&fooditemimage, 75, 75);
     iLoadImage(&superpowerfoodimage, "SelectedAssets/superfood.png");
     iResizeImage(&superpowerfoodimage, 75, 75);
+    char imagePath[100];
+    for (int i = 0; i < 6; i++) {
+        sprintf(imagePath, "SelectedAssets/sprites/%d.png", i + 1);
+        // Ensure these image files exist at the specified path
+        iLoadImage(&explosionSprites[i], imagePath);
+        iResizeImage(&explosionSprites[i], 120, 120);
+    }
+
+    for(int i=0; i<MAX_EXPLOSIONS; i++){
+        activeExplosions[i].isActive = false;
+    }
 }
 
 int main(int argc, char *argv[])
@@ -884,7 +1116,7 @@ int main(int argc, char *argv[])
     iSetTimer(50, moveenemybullets);
     iSetTimer(50, moveenemies);
     iSetTimer(2000, spawnnewenemies);
-    
+
     // As iDraw is the main drawing function called by GLUT, and it now manages
     // when to call rungamelogicanddisplay, there's no separate timer needed for rungamelogicanddisplay.
 
