@@ -9,7 +9,7 @@
 #include <string.h>
 #include <cctype>
 #include "iFont.h"
-
+#include<fstream>
 struct PlayerScore {
     char name[51];
     int score;
@@ -24,8 +24,8 @@ bool isgamerunning = false;
 bool iscreditpageactive = false;
 bool isinstructionpageactive = false;
 bool isleaderboardpageactive=false;
-bool isyouwonpageactive = false; // New state for "You Won" page
-bool isgameoverpageactive = false; // New state for "Game Over" page
+bool isyouwonpageactive = false; 
+bool isgameoverpageactive = false; 
 
 bool isgamepaused = false;
 
@@ -51,18 +51,22 @@ int totalbossesspawned = 0;
 bool isgameover = false;
 bool hasgamebeenwon = false;
 
-bool showendgamescreen = false; // This flag can be reused for timing, but separate state booleans for win/lose screens are better for clarity
+bool showendgamescreen = false; 
 int endgametimercounter = 0;
-const int you_won_screen_duration_ticks = 40; // 2 seconds at 50ms/tick (40 * 50ms = 2000ms)
+const int you_won_screen_duration_ticks = 250;
 
-// Added for score saving
+
 bool isscoresaved = false;
 
-// Updated enemy health values (twice the previous)
+
 const int regular_enemy_base_health_hits = 4;
 const int boss_enemy_base_health_hits = 10;
-const int regular_enemy_health_increase_per_5_kills = 2; // Twice the previous
-const int boss_health_increase_per_10_kills = 2; // Twice the previous
+const int regular_enemy_health_increase_per_5_kills = 2;
+const int boss_health_increase_per_10_kills = 2; 
+
+bool isresumegameactive = false;
+bool new_game_button_color = false;
+bool resume_button_color = false;
 
 #define MAX_ENEMIES 100
 struct Enemy {
@@ -162,6 +166,15 @@ const double bullet_height = 20;
 
 const double food_width = 50;
 const double food_height = 50;
+void moveplayermissiles();
+void fireenemybullets();
+void moveenemybullets();
+void spawnnewenemies();
+void moveenemies();
+void saveGameStateRealtime();
+void clearGameStateFile();
+void loadGameState();
+void showResumeOptionsScreen();
 
 bool compareScores(const PlayerScore& a, const PlayerScore& b) {
     return a.score > b.score;
@@ -192,7 +205,7 @@ void showNameInputScreen() {
     iShowLoadedImage(0, 0, &backgroundimage);
     iSetColor(255, 255, 0);
 
-    // This screen is now only for pre-game name input
+
     iTextAdvanced(screenwidth / 2 - 350, screenheight / 2 + 150, "Enter Your Name to Start Game:", 0.3, 2);
 
     iSetColor(255, 255, 255);
@@ -203,6 +216,129 @@ void showNameInputScreen() {
     iSetColor(255, 255, 255);
     iTextAdvanced(screenwidth / 2 - 250, screenheight / 2 - 100, "Press 'Enter' to confirm and start game.", 0.15, 1);
 }
+
+void loadGameState() {
+    std::ifstream inFile("gamestate.txt");
+    if (inFile.is_open()) {
+        std::string line;
+
+        std::getline(inFile, line);
+        if (line.rfind("Player Name: ", 0) == 0) {
+            std::string name_str = line.substr(13); 
+            strncpy(current_player_name, name_str.c_str(), 50);
+            current_player_name[50] = '\0'; 
+            name_input_index = strlen(current_player_name);
+        }
+
+
+        std::getline(inFile, line); 
+        if (line.rfind("Health: ", 0) == 0) {
+            playerhealth = std::stoi(line.substr(8));
+        }
+
+      
+        std::getline(inFile, line); 
+        if (line.rfind("Score: ", 0) == 0) {
+            gamescore = std::stoi(line.substr(7));
+        }
+
+
+        std::getline(inFile, line); 
+        if (line.rfind("My Ship Position: ", 0) == 0) {
+            size_t start_x = line.find('(') + 1;
+            size_t comma = line.find(',');
+            size_t end_y = line.find(')');
+            if (start_x != std::string::npos && comma != std::string::npos && end_y != std::string::npos) {
+                playerx = std::stod(line.substr(start_x, comma - start_x));
+                playery = std::stod(line.substr(comma + 2, end_y - (comma + 2)));
+            }
+        }
+
+       
+        std::getline(inFile, line); 
+        if (line.rfind("Enemy Count: ", 0) == 0) {
+            currentactiveenemycount = std::stoi(line.substr(13));
+        }
+
+        for (int i = 0; i < MAX_ENEMIES; ++i) {
+            activeenemies[i].isactive = false;
+        }
+
+        std::getline(inFile, line);
+
+        int loaded_enemy_count = 0;
+        while (std::getline(inFile, line) && loaded_enemy_count < MAX_ENEMIES) {
+            if (line.rfind("  - Type: ", 0) == 0) {
+                Enemy new_enemy;
+                new_enemy.isactive = true;
+
+                size_t type_start = line.find("Type: ") + 6;
+                size_t type_end = line.find(", Position:");
+                std::string type_str = line.substr(type_start, type_end - type_start);
+                new_enemy.isbossenemy = (type_str == "Boss");
+
+                size_t pos_start = line.find("Position: (") + 11;
+                size_t pos_comma = line.find(',', pos_start);
+                size_t pos_end = line.find(')', pos_comma);
+
+                if (pos_start != std::string::npos && pos_comma != std::string::npos && pos_end != std::string::npos) {
+                    new_enemy.positionx = std::stod(line.substr(pos_start, pos_comma - pos_start));
+                    new_enemy.positiony = std::stod(line.substr(pos_comma + 2, pos_end - (pos_comma + 2)));
+                }
+
+                size_t health_start = line.find("Health: ") + 8;
+                if (health_start != std::string::npos) {
+                    new_enemy.currenthealth = std::stoi(line.substr(health_start));
+                }
+                new_enemy.movementspeed = new_enemy.isbossenemy ? 10 : 6;
+                new_enemy.targethorizontalposition = new_enemy.isbossenemy ? screenwidth - 550 : screenwidth - 450;
+
+                activeenemies[loaded_enemy_count++] = new_enemy;
+            }
+        }
+        currentactiveenemycount = loaded_enemy_count;
+
+        inFile.close();
+        std::cout << "Game state loaded successfully." << std::endl;
+        iSetTimer(50, moveplayermissiles);
+        iSetTimer(500, fireenemybullets);
+        iSetTimer(50, moveenemybullets);
+        iSetTimer(50, moveenemies);
+        iSetTimer(2000, spawnnewenemies);
+        iSetTimer(1000, saveGameStateRealtime);
+        iResumeTimer(0);
+    } else {
+        std::cerr << "Error: Unable to open gamestate.txt for reading or file does not exist." << std::endl;
+    }
+}
+
+
+void showResumeOptionsScreen() {
+    iClear();
+    iShowLoadedImage(0, 0, &backgroundimage);
+    iSetColor(255, 255, 0);
+    iTextAdvanced(screenwidth / 2 - 250, screenheight / 2 + 200, "Continue or Start New Game?", 0.3, 2);
+
+    if (new_game_button_color) {
+        iSetColor(74, 240, 229);
+    } else {
+        iSetColor(255, 255, 255);
+    }
+    iFilledRectangle(screenwidth / 2 - 150, screenheight / 2 + 50, 300, 50);
+    iSetColor(0, 0, 0);
+    iTextAdvanced(screenwidth / 2 - 70, screenheight / 2 + 65, "NEW GAME", 0.2, 1);
+
+    
+    if (resume_button_color) {
+        iSetColor(74, 240, 229);
+    } else {
+        iSetColor(255, 255, 255);
+    }
+    iFilledRectangle(screenwidth / 2 - 150, screenheight / 2 - 50, 300, 50);
+    iSetColor(0, 0, 0);
+    iTextAdvanced(screenwidth / 2 - 60, screenheight / 2 - 35, "RESUME", 0.2, 1);
+}
+
 
 bool checkCollision(double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2)
 {
@@ -429,26 +565,24 @@ void resetallgamestates() {
     regularenemieskilledsincelastbosswave = 0;
     isinbosswave = false;
     currentbossenemiesinwave = 0;
-    endgametimercounter = 0; // Corrected: Used endgametimercounter
+    endgametimercounter = 0; 
     currentfooditemcount = 0;
     enemieskilledsincelastfooddrop = 0;
     enemieskilledsincelastsuperpower = 0;
     issuperpOweractive = false;
     superpowerrstarttime = 0;
     superpowerbullettimer = 0;
-    gametickcount = 0; // Reset gametickcount here as well for a fresh start
+    gametickcount = 0; 
     isgamepaused = false;
-    isyouwonpageactive = false; // Reset "You Won" page state
-    isgameoverpageactive = false; // Reset "Game Over" page state
-    isscoresaved = false; // Reset score saved state
-    // isnameinputactive, name_input_index, current_player_name are NOT reset here,
-    // as they are handled explicitly when entering name input.
+    isyouwonpageactive = false; 
+    isgameoverpageactive = false; 
+    isscoresaved = false;
+
     iResumeTimer(0);
 }
 void drawExplosions() {
     if (isgamepaused) return;
-    // Adjusted ticks_per_frame to show 6 images within approximately 0.1 seconds
-    // (2 ticks/frame * 6 frames * 10ms/tick = 120ms = 0.12 seconds)
+
     const int ticks_per_frame = 2;
     const int total_frames = 6;
     for (int i = 0; i < MAX_EXPLOSIONS; i++) {
@@ -475,11 +609,49 @@ void createExplosion(double x, double y) {
     }
 }
 
+void clearGameStateFile() {
+    std::ofstream outFile("gamestate.txt", std::ios::trunc); 
+    if (outFile.is_open()) {
+        outFile.close(); 
+    } else {
+        std::cerr << "Error: Unable to open gamestate.txt for clearing." << std::endl;
+    }
+}
+
+void saveGameStateRealtime() {
+    if (!isgamerunning || isgameover || isgamepaused) {
+        return; 
+    }
+
+    std::ofstream outFile("gamestate.txt"); 
+    if (outFile.is_open()) {
+        outFile << "Player Name: " << current_player_name << std::endl;
+        outFile << "Health: " << playerhealth << std::endl;
+        outFile << "Score: " << gamescore << std::endl;
+        outFile << "My Ship Position: (" << playerx << ", " << playery << ")" << std::endl;
+        outFile << "Enemy Count: " << currentactiveenemycount << std::endl;
+
+        outFile << "Active Enemies:" << std::endl;
+        for (int i = 0; i < currentactiveenemycount; ++i) {
+            if (activeenemies[i].isactive) {
+                outFile << "  - Type: " << (activeenemies[i].isbossenemy ? "Boss" : "Regular");
+                outFile << ", Position: (" << activeenemies[i].positionx << ", " << activeenemies[i].positiony << ")";
+                outFile << ", Health: " << activeenemies[i].currenthealth << std::endl;
+            }
+        }
+        outFile.close();
+    } else {
+        std::cerr << "Error: Unable to open gamestate.txt for writing." << std::endl;
+    }
+}
+
+
+
 void rungamelogicanddisplay()
 {
     if (isgamepaused || isgameover) return;
 
-    // gametickcount++ moved to iDraw()
+
 
     if (issuperpOweractive && (gametickcount - superpowerrstarttime >= superpower_duration_ticks)) {
         issuperpOweractive = false;
@@ -499,7 +671,7 @@ void rungamelogicanddisplay()
         }
     }
 
-    // Draw explosions here, as requested
+
     drawExplosions();
 
     for (int i = 0; i < currentplayerbulletcount; i++)
@@ -555,7 +727,7 @@ void rungamelogicanddisplay()
         if (!issuperpOweractive && checkCollision(enemybullets[i].positionx, enemybullets[i].positiony, bullet_width, bullet_height,
                                                  playerx + player_hitbox_offset_x, playery + player_hitbox_offset_y, player_hitbox_width, player_hitbox_height))
         {
-            playerhealth -= (enemybullets[i].firedbyboss ? 3 : 2); // Increased enemy missile power
+            playerhealth -= (enemybullets[i].firedbyboss ? 3 : 2); 
             enemybullets[i].positionx = -100;
         }
         else if (enemybullets[i].positionx >= 0)
@@ -571,11 +743,12 @@ void rungamelogicanddisplay()
         isgameover = true;
         hasgamebeenwon = false;
         isgamerunning = false;
-        isgameoverpageactive = true; // Activate "Game Over" page
-        endgametimercounter = gametickcount; // Start timer for "Game Over" page
-        isscoresaved = false; // Make sure score saving is ready for this end state
-        // resetallgamestates(); // Will be called after the "Game Over" page times out
+        isgameoverpageactive = true; 
+        endgametimercounter = gametickcount; 
+        isscoresaved = false; 
+
         iPauseTimer(0);
+        clearGameStateFile(); 
         return;
     }
 
@@ -637,11 +810,12 @@ void rungamelogicanddisplay()
         isgameover = true;
         hasgamebeenwon = true;
         isgamerunning = false;
-        isyouwonpageactive = true; // Activate "You Won" page
-        endgametimercounter = gametickcount; // Start timer for "You Won" page
-        isscoresaved = false; // Make sure score saving is ready for this end state
-        // resetallgamestates(); // This will be called after "You Won" page times out
+        isyouwonpageactive = true; 
+        endgametimercounter = gametickcount; 
+        isscoresaved = false; 
+
         iPauseTimer(0);
+        clearGameStateFile(); 
         return;
     }
 
@@ -692,6 +866,9 @@ void rungamelogicanddisplay()
         iSetColor(0, 255, 255);
         iTextAdvanced(screenwidth / 2 - 100, screenheight - 50, "SUPERPOWER ACTIVATED!", 0.2, 1);
     }
+
+
+    saveGameStateRealtime();
 }
 
 bool play_button_color=false;
@@ -756,7 +933,7 @@ void showleaderboard(){
     loadScoresFromFile(top_scores, score_count);
 
     iSetColor(255, 255, 255);
-    int display_count = std::min(5, score_count); // Use std::min
+    int display_count = std::min(5, score_count); 
     if (display_count == 0) {
         iTextAdvanced(screenwidth / 2 - 200-90, screenheight / 2, "No scores yet. Go play!", 0.2, 1);
     } else {
@@ -783,14 +960,14 @@ void showgameinstructions()
 {
     iShowLoadedImage(0, 0, &instructionpageimage);
     iSetColor(255, 255, 255);
-    // iTextAdvanced(60, 650, "BACK", 0.15, 1); // Removed
+    // iTextAdvanced(60, 650, "BACK", 0.15, 1);
 }
 
 void showgamecredits()
 {
     iShowLoadedImage(0, 0, &creditspageimage);
     iSetColor(255, 255, 255);
-    // iTextAdvanced(60, 620, "BACK", 0.15, 1); // Removed
+    // iTextAdvanced(60, 620, "BACK", 0.15, 1);
 }
 void managemusicplayback()
 {
@@ -808,9 +985,9 @@ void managemusicplayback()
 
 void showyouwonpage() {
     iShowLoadedImage(0, 0, &backgroundimage);
-    iSetColor(0, 255, 0); // Green color
+    iSetColor(0, 255, 0); 
     iTextAdvanced(screenwidth / 2 - 200, screenheight / 2, "YOU WON!", 0.5, 5);
-
+    // Sleep(4000);
     if (gametickcount - endgametimercounter >= you_won_screen_duration_ticks) {
         if (!isscoresaved) {
             saveScoreToFile();
@@ -818,27 +995,27 @@ void showyouwonpage() {
         }
         isyouwonpageactive = false;
         ishomepageactive = true;
-        endgametimercounter = 0; // Reset timer for next win
-        resetallgamestates(); // Reset after the "You Won" screen is done
-        managemusicplayback(); // Play homepage music
+        endgametimercounter = 0; 
+        resetallgamestates(); 
+        managemusicplayback(); 
     }
 }
 
 void showgameoverpage() {
     iShowLoadedImage(0, 0, &backgroundimage);
-    iSetColor(255, 0, 0); // Red color
+    iSetColor(255, 0, 0); 
     iTextAdvanced(screenwidth / 2 - 200, screenheight / 2, "GAME OVER!", 0.5, 5);
-
-    if (gametickcount - endgametimercounter >= you_won_screen_duration_ticks) { // Reusing same duration
+    // Sleep(4000);
+    if (gametickcount - endgametimercounter >= you_won_screen_duration_ticks) { 
         if (!isscoresaved) {
             saveScoreToFile();
             isscoresaved = true;
         }
         isgameoverpageactive = false;
         ishomepageactive = true;
-        endgametimercounter = 0; // Reset timer
-        resetallgamestates(); // Reset after the "Game Over" screen is done
-        managemusicplayback(); // Play homepage music
+        endgametimercounter = 0; 
+        resetallgamestates(); 
+        managemusicplayback(); 
     }
 }
 
@@ -847,13 +1024,17 @@ void showgameoverpage() {
 
 void iDraw()
 {
-    // Increment gametickcount at the start of iDraw() to ensure it always progresses
+    
     gametickcount++;
 
     iClear();
     if (ishomepageactive == true)
     {
         showgamehomepage();
+    }
+    else if (isresumegameactive == true) 
+    {
+        showResumeOptionsScreen();
     }
     else if (isgamerunning == true)
     {
@@ -880,11 +1061,11 @@ void iDraw()
     }else if(isleaderboardpageactive==true){
         showleaderboard();
     }
-    else if (isyouwonpageactive == true) // New condition for "You Won" page
+    else if (isyouwonpageactive == true) 
     {
         showyouwonpage();
     }
-    else if (isgameoverpageactive == true) // New condition for "Game Over" page
+    else if (isgameoverpageactive == true) 
     {
         showgameoverpage();
     }
@@ -913,6 +1094,22 @@ void iMouseMove(int mousex, int mousey)
         }
     }
 
+    if (isresumegameactive) {
+       
+        if (mousex >= screenwidth / 2 - 150 && mousex <= screenwidth / 2 + 150 &&
+            mousey >= screenheight / 2 + 50 && mousey <= screenheight / 2 + 100) {
+            new_game_button_color = true;
+        } else {
+            new_game_button_color = false;
+        }
+        
+        if (mousex >= screenwidth / 2 - 150 && mousex <= screenwidth / 2 + 150 &&
+            mousey >= screenheight / 2 - 50 && mousey <= screenheight / 2 ) {
+            resume_button_color = true;
+        } else {
+            resume_button_color = false;
+        }
+    }
 }
 
 void iMouseDrag(int mousex, int mousey)
@@ -923,15 +1120,25 @@ void iMouse(int button, int state, int mousex, int mousey)
 {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
-        std::cout<<mousex<<" "<<mousey<<std::endl; // Use std::cout
+        std::cout<<mousex<<" "<<mousey<<std::endl; 
         if (ishomepageactive == true)
         {
-            if (703<=mousex && mousex<=793 && 426<=mousey && mousey<=457)
+            if (703<=mousex && mousex<=793 && 426<=mousey && mousey<=457) 
             {
-                ishomepageactive = false;
-                isnameinputactive = true; // Activate name input screen
-                strcpy(current_player_name, ""); // Clear previous name
-                name_input_index = 0; // Reset name input index
+                
+                std::ifstream checkFile("gamestate.txt");
+                bool fileExistsAndNotEmpty = checkFile.good() && checkFile.peek() != std::ifstream::traits_type::eof();
+                checkFile.close();
+
+                if (fileExistsAndNotEmpty) {
+                    ishomepageactive = false;
+                    isresumegameactive = true; 
+                } else {
+                    ishomepageactive = false;
+                    isnameinputactive = true; 
+                    strcpy(current_player_name, ""); 
+                    name_input_index = 0; 
+                }
             }
             else if(600<=mousex && mousex<=896 && 353<=mousey && mousey<=388)
             {
@@ -953,7 +1160,7 @@ void iMouse(int button, int state, int mousex, int mousey)
                 exit(0);
             }
         }
-        // These checks remain valid for navigating back if not from clicking a specific "BACK" text
+
         if (isinstructionpageactive == true && mousex >= 49 && mousex <= 176 && mousey >= 627 && mousey <= 725)
         {
             isinstructionpageactive = false;
@@ -963,6 +1170,27 @@ void iMouse(int button, int state, int mousex, int mousey)
         {
             iscreditpageactive = false;
             ishomepageactive = true;
+        }
+
+
+        if (isresumegameactive) {
+          
+            if (mousex >= screenwidth / 2 - 150 && mousex <= screenwidth / 2 + 150 &&
+                mousey >= screenheight / 2 + 50 && mousey <= screenheight / 2 + 100) {
+                isresumegameactive = false;
+                isnameinputactive = true; 
+                strcpy(current_player_name, ""); 
+                name_input_index = 0; 
+            }
+            
+            else if (mousex >= screenwidth / 2 - 150 && mousex <= screenwidth / 2 + 150 &&
+                     mousey >= screenheight / 2 - 50 && mousey <= screenheight / 2 ) {
+                isresumegameactive = false;
+                loadGameState(); 
+                isgamerunning = true; 
+                ishomepageactive = false; 
+                managemusicplayback(); 
+            }
         }
     }
 }
@@ -977,14 +1205,14 @@ void iKeyPress(unsigned char key)
         if (key == '\r') {
             if (name_input_index > 0) {
                 current_player_name[name_input_index] = '\0';
-                // Score is saved after game completion, not here (pre-game input)
+               
             }
             isnameinputactive = false;
-            ishomepageactive = false; // Go to game screen
-            isgamerunning = true; // Start the game
-            resetallgamestates(); // Reset and prepare game variables
-            spawnnewenemies(); // Spawn initial enemies
-            managemusicplayback(); // Start game music
+            ishomepageactive = false; 
+            isgamerunning = true; 
+            resetallgamestates(); 
+            spawnnewenemies(); 
+            managemusicplayback(); 
         } else if (key == '\b') {
             if (name_input_index > 0) {
                 name_input_index--;
@@ -995,7 +1223,7 @@ void iKeyPress(unsigned char key)
             name_input_index++;
             current_player_name[name_input_index] = '\0';
         }
-        return; // Consume the key press
+        return; 
     }
 
     if (key == 'p' || key == 'P')
@@ -1092,7 +1320,7 @@ void loadallgameresources()
     char imagePath[100];
     for (int i = 0; i < 6; i++) {
         sprintf(imagePath, "SelectedAssets/sprites/%d.png", i + 1);
-        // Ensure these image files exist at the specified path
+
         iLoadImage(&explosionSprites[i], imagePath);
         iResizeImage(&explosionSprites[i], 120, 120);
     }
