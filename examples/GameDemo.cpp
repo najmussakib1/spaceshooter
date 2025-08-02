@@ -1,5 +1,6 @@
 #include "iGraphics.h"
 #include "iSound.h"
+#include <time.h>
 Image bg;
 
 Sprite mario1, mario2, rect;
@@ -12,14 +13,16 @@ bool isMirroredX[2] = {false, false};
 
 void loadResources()
 {
+    clock_t start = clock(); // Start timing
+
     iLoadFramesFromSheet(pinkMonsterFrames, "assets/images/sprites/1 Pink_Monster/Pink_Monster_Idle_4.png", 1, 4);
-    iInitSprite(&pinkMonster, -1);
+    // iInitSprite(&pinkMonster);
     iChangeSpriteFrames(&pinkMonster, pinkMonsterFrames, 4);
     iSetSpritePosition(&pinkMonster, 300, 250);
     iScaleSprite(&pinkMonster, 3.0);
 
     iLoadFramesFromFolder(golemFrames, "assets/images/sprites/Golem_2/Walking");
-    iInitSprite(&golem, -1);
+    // iInitSprite(&golem);
     iChangeSpriteFrames(&golem, golemFrames, 24);
     iSetSpritePosition(&golem, 300, 200);
     iScaleSprite(&golem, 0.5);
@@ -27,21 +30,25 @@ void loadResources()
     iLoadImage(&bg, "assets/images/background.jpg");
     iResizeImage(&bg, 1800, 1000);
 
-    iLoadImage(&rectFrame, "assets/images/rect.png"); // Ignore white color for collision detection
-    iInitSprite(&rect, 0xFFFFFF);
+    iLoadImage(&rectFrame, "assets/images/rect.png");
+    iIgnorePixels(&rectFrame, 0xFFFFFF); // Ignore white color for transparency
+    // iInitSprite(&rect);
     iChangeSpriteFrames(&rect, &rectFrame, 1);
     iSetSpritePosition(&rect, -100, -50);
     iScaleSprite(&rect, 2);
-    // iWrapSprite(&rect, 500);
+
+    clock_t end = clock(); // End timing
+    double elapsed_ms = 1.0 * (end - start) / CLOCKS_PER_SEC;
+
+    printf("Resource loading took %.2f seconds\n", elapsed_ms);
 }
 
 void iDraw()
 {
     // place your drawing codes here
-
+    iClear();
     // iShowSprite(&mario1);
     iShowLoadedImage(0, 0, &bg);
-    iWrapImage(&bg, -10);
     iShowSprite(&golem);
     iShowSprite(&pinkMonster);
     // iShowSprite(&mario2);
@@ -54,30 +61,14 @@ void iDraw()
     // {
     //     iText(100, 500, "Collision Detected", GLUT_BITMAP_TIMES_ROMAN_24);
     // }
+    iShowSpeed(10, 10);
 }
 
 /*
-    function iMouseDrag() is called when the user presses and drags the mouse.
+    function iMouseClick() is called when the user presses/releases the mouse.
     (mx, my) is the position where the mouse pointer is.
 */
-void iMouseDrag(int mx, int my)
-{
-    // place your codes here
-}
-
-/*
-    function iMouseMove() is called automatically when the mouse pointer is in motion
-*/
-void iMouseMove(int mx, int my)
-{
-    // place your code here
-}
-
-/*
-    function iMouse() is called when the user presses/releases the mouse.
-    (mx, my) is the position where the mouse pointer is.
-*/
-void iMouse(int button, int state, int mx, int my)
+void iMouseClick(int button, int state, int mx, int my)
 {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
@@ -89,23 +80,29 @@ void iMouse(int button, int state, int mx, int my)
     }
 }
 
-void iMouseWheel(int dir, int mx, int my)
-{
-    // place your code here
-}
-
 /*
-    function iKeyboard() is called whenever the user hits a key in keyboard.
+    function iKeyPress() is called whenever the user hits a key in keyboard.
     key- holds the ASCII value of the key pressed.
 */
-void iKeyboard(unsigned char key)
+void iKeyPress(unsigned char key)
 {
 
     // place your codes for other keys here
+    switch (key)
+    {
+    case 'q':
+        iCloseWindow();
+        break;
+    case '\r':
+        iToggleFullscreen();
+        break;
+    default:
+        break;
+    }
 }
 
 /*
-    function iSpecialKeyboard() is called whenver user hits special keys like-
+    function iSpecialKeyPress() is called whenver user hits special keys like-
     function keys, home, end, pg up, pg down, arraows etc. you have to use
     appropriate constants to detect them. A list is:
     GLUT_KEY_F1, GLUT_KEY_F2, GLUT_KEY_F3, GLUT_KEY_F4, GLUT_KEY_F5, GLUT_KEY_F6,
@@ -113,7 +110,7 @@ void iKeyboard(unsigned char key)
     GLUT_KEY_LEFT, GLUT_KEY_UP, GLUT_KEY_RIGHT, GLUT_KEY_DOWN, GLUT_KEY_PAGE UP,
     GLUT_KEY_PAGE DOWN, GLUT_KEY_HOME, GLUT_KEY_END, GLUT_KEY_INSERT
 */
-void iSpecialKeyboard(unsigned char key)
+void iSpecialKeyPress(unsigned char key)
 {
 
     if (key == GLUT_KEY_END)
@@ -171,6 +168,7 @@ void iAnim()
     // place your codes here
     iAnimateSprite(&golem);
     iAnimateSprite(&pinkMonster);
+    iWrapImage(&bg, -2, 0);
     // iUpdateSprite(&mario1);
     // iUpdateSprite(&mario2);
     // iUpdateSprite(&rect);
@@ -178,11 +176,10 @@ void iAnim()
 
 int main(int argc, char *argv[])
 {
-    glutInit(&argc, argv);
-    loadResources();
-    iInitializeSound();
-    iPlaySound("assets/sounds/background.wav", true);
     iSetTimer(50, iAnim);
-    iInitialize(1800, 1000, "Sprite Demo");
+    loadResources();
+    iPlaySound("assets/sounds/background.wav", true, 20);
+    iOpenWindow(1366, 768, "Game Demo", 0);
+    printf("Exiting...");
     return 0;
 }

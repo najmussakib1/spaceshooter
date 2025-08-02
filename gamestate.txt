@@ -1,0 +1,8 @@
+Player Name: dihan
+Health: 194
+Score: 150
+My Ship Position: (190, 405)
+Enemy Count: 2
+Active Enemies:
+  - Type: Regular, Position: (1536, 619), Health: 4
+  - Type: Regular, Position: (1842, 106), Health: 4

@@ -37,9 +37,9 @@ void loadPinkMonster()
     iLoadFramesFromSheet(pinkMonster.walk, "assets/images/sprites/1 Pink_Monster/Pink_Monster_Walk_6.png", 1, 6);
     iLoadFramesFromSheet(pinkMonster.jump, "assets/images/sprites/1 Pink_Monster/Pink_Monster_Jump_8.png", 1, 8);
 
-    iInitSprite(&pinkMonster.sprite, -1);
+    iInitSprite(&pinkMonster.sprite);
     iChangeSpriteFrames(&pinkMonster.sprite, pinkMonster.idle, 4);
-    iSetSpritePosition(&pinkMonster.sprite, 200, 0);
+    iSetSpritePosition(&pinkMonster.sprite, 250, 0);
     iScaleSprite(&pinkMonster.sprite, 3.0);
     pinkMonster.state = IDLE;
     pinkMonster.direction = 1; // 1 for right, -1 for left
@@ -51,9 +51,9 @@ void loadGolem()
     iLoadFramesFromFolder(golem.walk, "assets/images/sprites/Golem_2/Walking");
     iLoadFramesFromFolder(golem.jump, "assets/images/sprites/Golem_2/Jump Start");
 
-    iInitSprite(&golem.sprite, -1);
+    iInitSprite(&golem.sprite);
     iChangeSpriteFrames(&golem.sprite, golem.idle, 18);
-    iSetSpritePosition(&golem.sprite, 300, -75);
+    iSetSpritePosition(&golem.sprite, 250, -75);
     iScaleSprite(&golem.sprite, 0.5);
     iMirrorSprite(&golem.sprite, HORIZONTAL);
     golem.state = IDLE;
@@ -92,10 +92,15 @@ void iDraw()
 {
     // place your drawing codes here
     iClear();
+    iSetColor(255, 255, 255);
+    iFilledRectangle(0, 0, 800, 400);
     iShowSprite(&golem.sprite);
     iShowSprite(&pinkMonster.sprite);
 
-    if (iCheckCollision(&golem.sprite, &pinkMonster.sprite))
+    int count = iCheckCollision(&golem.sprite, &pinkMonster.sprite);
+    int visibleCount = iGetVisiblePixelsCount(&pinkMonster.sprite);
+
+    if (count / (1.0 * visibleCount) > 0.01) // 1% collision threshold // or we can just use count > 0
     {
         iSetColor(255, 0, 0);
         iText(100, 300, "Collision Detected", GLUT_BITMAP_TIMES_ROMAN_24);
@@ -105,53 +110,10 @@ void iDraw()
 }
 
 /*
-function iMouseMove() is called when the user moves the mouse.
-(mx, my) is the position where the mouse pointer is.
-*/
-void iMouseMove(int mx, int my)
-{
-    // place your codes here
-}
-
-/*
-function iMouseDrag() is called when the user presses and drags the mouse.
-(mx, my) is the position where the mouse pointer is.
-*/
-void iMouseDrag(int mx, int my)
-{
-    // place your codes here
-}
-
-/*
-function iMouseWheel() is called when the user scrolls the mouse wheel.
-dir = 1 for up, -1 for down.
-*/
-void iMouseWheel(int dir, int mx, int my)
-{
-    // place your code here
-}
-
-/*
-    function iMouse() is called when the user presses/releases the mouse.
-    (mx, my) is the position where the mouse pointer is.
-*/
-void iMouse(int button, int state, int mx, int my)
-{
-    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
-    {
-        // place your codes here
-    }
-    if (button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN)
-    {
-        // place your codes here
-    }
-}
-
-/*
-    function iKeyboard() is called whenever the user hits a key in keyboard.
+    function iKeyPress() is called whenever the user hits a key in keyboard.
     key- holds the ASCII value of the key pressed.
 */
-void iKeyboard(unsigned char key)
+void iKeyPress(unsigned char key)
 {
     if (key == 'x')
     {
@@ -162,7 +124,7 @@ void iKeyboard(unsigned char key)
 }
 
 /*
-    function iSpecialKeyboard() is called whenver user hits special keys like-
+    function iSpecialKeyPress() is called whenver user hits special keys like-
     function keys, home, end, pg up, pg down, arraows etc. you have to use
     appropriate constants to detect them. A list is:
     GLUT_KEY_F1, GLUT_KEY_F2, GLUT_KEY_F3, GLUT_KEY_F4, GLUT_KEY_F5, GLUT_KEY_F6,
@@ -170,7 +132,7 @@ void iKeyboard(unsigned char key)
     GLUT_KEY_LEFT, GLUT_KEY_UP, GLUT_KEY_RIGHT, GLUT_KEY_DOWN, GLUT_KEY_PAGE UP,
     GLUT_KEY_PAGE DOWN, GLUT_KEY_HOME, GLUT_KEY_END, GLUT_KEY_INSERT
 */
-void iSpecialKeyboard(unsigned char key)
+void iSpecialKeyPress(unsigned char key)
 {
 
     if (key == GLUT_KEY_END)
@@ -229,11 +191,9 @@ void iSpecialKeyboard(unsigned char key)
 
 int main(int argc, char *argv[])
 {
-    glutInit(&argc, argv);
-    // place your own initialization codes here.
+    iSetTimer(100, iAnim);
     loadPinkMonster();
     loadGolem();
-    iSetTimer(100, iAnim);
-    iInitialize(800, 400, "SpriteDemo");
+    iOpenWindow(800, 400, "BattleDemo");
     return 0;
 }
